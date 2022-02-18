@@ -23,9 +23,27 @@ type PublicKey struct {
 	key *secp256k1.Point
 }
 
+func (k *PublicKey) Decode(b []byte) {
+	k.key = &secp256k1.Point{}
+	k.key.SetBytes(b)
+}
+
 type Signature struct {
 	v    byte
 	r, s *secp256k1.Fn
+}
+
+func (s *Signature) Decode(b []byte) error {
+	if len(b) < 64 {
+		return errors.New("signature encoding must be 64/65 bytes")
+	}
+	// TODO: decode v
+	s.r = &secp256k1.Fn{}
+	s.r.SetB32(b[:32])
+	b = b[32:]
+	s.s = &secp256k1.Fn{}
+	s.s.SetB32(b[:32])
+	return nil
 }
 
 func GenerateKeypair() *Keypair {
