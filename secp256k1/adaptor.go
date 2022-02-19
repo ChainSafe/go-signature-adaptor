@@ -116,6 +116,13 @@ func adaptorSign(k, z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 		return nil, err
 	}
 
+	k2, err := secp256k1.RandomFnNoPanic()
+	if err != nil {
+		return nil, err
+	}
+
+	k = &k2
+
 	// R = k*G
 	R := &secp256k1.Point{}
 	R.BaseExp(k)
@@ -303,22 +310,6 @@ func RecoverFromAdaptorAndSignature(adaptor *Adaptor, sig *Signature) (*secp256k
 	sinv.Inverse(sig.s)
 	y := &secp256k1.Fn{}
 	y.Mul(sinv, adaptor.s)
-
-	// var sb [32]byte
-	// sig.s.PutB32(sb[:])
-	// fmt.Println(sb)
-
-	// var sinvb [32]byte
-	// sinv.PutB32(sinvb[:])
-	// fmt.Println(sinvb)
-
-	// var s_a [32]byte
-	// adaptor.s.PutB32(s_a[:])
-	// fmt.Println(s_a)
-
-	// var small_y [32]byte
-	// y.PutB32(small_y[:])
-	// fmt.Println(small_y)
 
 	Y := &secp256k1.Point{}
 	Y.BaseExp(y)

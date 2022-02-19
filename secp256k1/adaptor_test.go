@@ -32,6 +32,7 @@ func TestRecoverFromAdaptorAndSignature(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 
+	// TODO: fix this, doesn't work with signatures we generated
 	secret, err := RecoverFromAdaptorAndSignature(sig.AdaptorWithSecret.adaptor, sig.Signature)
 	require.NoError(t, err)
 	require.True(t, secret.Eq(sig.AdaptorWithSecret.secret))
@@ -80,6 +81,7 @@ func TestAdaptor_ValidPlain(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, secret.Eq(y))
 
+	// TODO: dleq check fails, probably due to hash issues
 	ok, err = pubkey.VerifyAdaptor(messageHashStr, adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
