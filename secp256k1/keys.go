@@ -2,6 +2,7 @@ package secp256k1
 
 import (
 	"errors"
+	"fmt"
 	"github.com/renproject/secp256k1"
 )
 
@@ -53,18 +54,22 @@ func (s *Signature) Decode(b []byte) error {
 
 // r, s, v
 func (sig *Signature) Encode() ([]byte, error) {
+	fmt.Println(" sig r: ", sig.r)
 	var b []byte
 	var r [32]byte
 	if sig.r == nil {
 		return nil, errors.New("invalid r value")
 	}
 	sig.r.PutB32(r[:])
+	fmt.Println("r: ", r)
 	b = append(b, r[:]...)
 	var s [32]byte
 	if sig.s == nil {
 		return nil, errors.New("invalid s value")
 	}
 	sig.s.PutB32(s[:])
+	fmt.Println("s: ", s)
+	// 0 byte for v
 	b = append(b, s[:]...)
 	v := byte(0)
 	b = append(b, v)
