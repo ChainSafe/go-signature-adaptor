@@ -20,6 +20,10 @@ type AdaptorWithSecret struct {
 	adaptor *Adaptor
 }
 
+func (a *AdaptorWithSecret) Adaptor() *Adaptor {
+	return a.adaptor
+}
+
 type Adaptor struct {
 	r, s  *secp256k1.Fn
 	proof *dleqProof
@@ -76,6 +80,10 @@ type dleqProof struct {
 type SignatureWithAdaptor struct {
 	*Signature
 	*AdaptorWithSecret
+}
+
+func (s *SignatureWithAdaptor) Adaptor() *Adaptor {
+	return s.AdaptorWithSecret.adaptor
 }
 
 func (kp *Keypair) AdaptorSign(msg []byte) (*SignatureWithAdaptor, error) {
@@ -211,6 +219,7 @@ func hashToScalar(R, R_p, Y, Q, Q_p *secp256k1.Point) *secp256k1.Fn {
 	Y.PutBytes(yb[:])
 	Q.PutBytes(qb[:])
 	Q_p.PutBytes(qpb[:])
+
 	b := append(rb[:], rpb[:]...)
 	b = append(b, yb[:]...)
 	b = append(b, qb[:]...)
@@ -226,8 +235,6 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, sig *Adaptor) (bool, error) {
 	if len(msg) != MessageLength {
 		return false, errors.New("invalid message length: not 32 byte hash")
 	}
-
-	fmt.Println(sig)
 
 	// hash of message
 	z := &secp256k1.Fn{}
