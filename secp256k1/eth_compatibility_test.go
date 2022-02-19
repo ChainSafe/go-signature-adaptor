@@ -1,10 +1,9 @@
 package secp256k1
 
 import (
-	"fmt"
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gotest.tools/assert"
 	"testing"
 )
 
@@ -15,13 +14,22 @@ func TestSignature_EthereumCompatibility(t *testing.T) {
 	sig, err := kp.Sign(msg[:])
 	require.NoError(t, err)
 
-	//ethSig, err := secp256k1.Sign(msg[:], kp.private.Encode())
 	ethSig, err := secp256k1.Sign(msg[:], kp.private.Encode())
 	require.NoError(t, err)
-	//fmt.Println(sig.r)
-	b, err := sig.Encode()
+
+	// Our verify with eth sig WORKS NICE
+	newSig := &Signature{}
+	err = newSig.Decode(ethSig)
 	require.NoError(t, err)
-	fmt.Println(b)
-	fmt.Println(ethSig)
-	assert.Equal(t, b, ethSig)
+	ok, err := kp.Public().Verify(msg[:], newSig)
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	// Eth verify with our sig
+	encSig, err := sig.Encode()
+	require.NoError(t, err)
+	pubKey, err := kp.Public().EncodeDecompressed()
+	require.NoError(t, err)
+	verified := secp256k1.VerifySignature(pubKey, msg[:], encSig[:64])
+	assert.True(t, verified)
 }

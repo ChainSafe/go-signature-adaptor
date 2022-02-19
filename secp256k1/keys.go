@@ -2,8 +2,6 @@ package secp256k1
 
 import (
 	"errors"
-	"fmt"
-
 	"github.com/renproject/secp256k1"
 )
 
@@ -57,20 +55,19 @@ func (s *Signature) Decode(b []byte) error {
 func (sig *Signature) Encode() ([]byte, error) {
 	var b []byte
 	var r [32]byte
-	sig.r = &secp256k1.Fn{}
+	if sig.r == nil {
+		return nil, errors.New("invalid r value")
+	}
 	sig.r.PutB32(r[:])
-	fmt.Println("sig.r", sig.r)
-	fmt.Println("sig.s", sig.s)
-	fmt.Println("r", r)
 	b = append(b, r[:]...)
 	var s [32]byte
-	sig.s = &secp256k1.Fn{}
+	if sig.s == nil {
+		return nil, errors.New("invalid s value")
+	}
 	sig.s.PutB32(s[:])
 	b = append(b, s[:]...)
 	v := byte(0)
 	b = append(b, v)
-	fmt.Println(len(b))
-	fmt.Println(b)
 	return b, nil
 }
 
@@ -188,4 +185,22 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	}
 
 	return fpToFn(&rx).Eq(sig.r), nil
+}
+
+func (pk *PublicKey) Encode() []byte {
+	var b [33]byte
+	pk.key.PutBytes(b[:])
+	return b[:]
+}
+
+// TODO see if this is correct
+func (pk *PublicKey) EncodeDecompressed() ([]byte, error) {
+	var b [64]byte
+	x, y, err := pk.key.XY()
+	if err != nil {
+		return nil, err
+	}
+	x.PutB32(b[:32])
+	y.PutB32(b[32:])
+	return b[:], err
 }
