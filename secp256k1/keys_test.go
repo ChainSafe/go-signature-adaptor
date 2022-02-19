@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSignAndVerify(t *testing.T) {
+func TestECDSA_SignAndVerify(t *testing.T) {
 	kp := GenerateKeypair()
 
 	msg := [32]byte{1, 2, 3}

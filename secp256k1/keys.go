@@ -1,12 +1,7 @@
 package secp256k1
 
 import (
-	//"crypto/ecdsa"
 	"errors"
-	//"math/big"
-
-	//"github.com/ethereum/go-ethereum/crypto"
-	//"github.com/ethereum/go-ethereum/crypto/secp256k1"
 
 	"github.com/renproject/secp256k1"
 )
@@ -28,9 +23,27 @@ type PublicKey struct {
 	key *secp256k1.Point
 }
 
+func (k *PublicKey) Decode(b []byte) {
+	k.key = &secp256k1.Point{}
+	k.key.SetBytes(b)
+}
+
 type Signature struct {
 	v    byte
 	r, s *secp256k1.Fn
+}
+
+func (s *Signature) Decode(b []byte) error {
+	if len(b) < 64 {
+		return errors.New("signature encoding must be 64/65 bytes")
+	}
+	// TODO: decode v
+	s.r = &secp256k1.Fn{}
+	s.r.SetB32(b[:32])
+	b = b[32:]
+	s.s = &secp256k1.Fn{}
+	s.s.SetB32(b[:32])
+	return nil
 }
 
 func GenerateKeypair() *Keypair {
@@ -71,16 +84,23 @@ func (kp *Keypair) Sign(msg []byte) (*Signature, error) {
 		return nil, err
 	}
 
-	kinv := &secp256k1.Fn{}
-	kinv.Inverse(&k)
-
 	// hash of message
 	z := &secp256k1.Fn{}
 	_ = z.SetB32(msg) // TODO: check overflow
 
+	return sign(&k, z, kp.private.key)
+}
+
+// k := random value
+// z := hash(message)
+// x := private key
+func sign(k, z, x *secp256k1.Fn) (*Signature, error) {
+	kinv := &secp256k1.Fn{}
+	kinv.Inverse(k)
+
 	// R = k*G
 	R := &secp256k1.Point{}
-	R.BaseExp(&k)
+	R.BaseExp(k)
 
 	// r == x-coord of R
 	r_fp, _, err := R.XY()
@@ -92,7 +112,7 @@ func (kp *Keypair) Sign(msg []byte) (*Signature, error) {
 
 	// s = (z + r*x) * k^(-1)
 	rx := &secp256k1.Fn{}
-	rx.Mul(r, kp.private.key)
+	rx.Mul(r, x)
 	sum := &secp256k1.Fn{}
 	sum.Add(z, rx)
 	s := &secp256k1.Fn{}
@@ -140,15 +160,4 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	}
 
 	return fpToFn(&rx).Eq(sig.r), nil
-}
-
-type AdaptorSignature struct {
-	r, s  [32]byte
-	proof *dleqProof
-}
-
-type dleqProof struct{}
-
-func (kp *Keypair) AdaptorSign(msg []byte) (*AdaptorSignature, error) {
-	return nil, nil
 }
