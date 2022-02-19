@@ -2,6 +2,7 @@ package secp256k1
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/renproject/secp256k1"
 )
@@ -16,6 +17,12 @@ type Keypair struct {
 // PrivateKey ...
 type PrivateKey struct {
 	key *secp256k1.Fn
+}
+
+func (pk *PrivateKey) Encode() []byte {
+	var b [32]byte
+	pk.key.PutB32(b[:])
+	return b[:]
 }
 
 // PublicKey ...
@@ -44,6 +51,27 @@ func (s *Signature) Decode(b []byte) error {
 	s.s = &secp256k1.Fn{}
 	s.s.SetB32(b[:32])
 	return nil
+}
+
+// r, s, v
+func (sig *Signature) Encode() ([]byte, error) {
+	var b []byte
+	var r [32]byte
+	sig.r = &secp256k1.Fn{}
+	sig.r.PutB32(r[:])
+	fmt.Println("sig.r", sig.r)
+	fmt.Println("sig.s", sig.s)
+	fmt.Println("r", r)
+	b = append(b, r[:]...)
+	var s [32]byte
+	sig.s = &secp256k1.Fn{}
+	sig.s.PutB32(s[:])
+	b = append(b, s[:]...)
+	v := byte(0)
+	b = append(b, v)
+	fmt.Println(len(b))
+	fmt.Println(b)
+	return b, nil
 }
 
 func GenerateKeypair() *Keypair {
