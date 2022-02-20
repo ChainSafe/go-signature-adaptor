@@ -211,6 +211,11 @@ func (kp *Keypair) Public() *PublicKey {
 	return kp.public
 }
 
+// Private ...
+func (kp *Keypair) Private() *PrivateKey {
+	return kp.private
+}
+
 // Verify ...
 func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	if len(msg) != MessageLength {
@@ -241,4 +246,20 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	}
 
 	return fpToFn(&rx).Eq(sig.r), nil
+}
+
+func SumPrivateKeys(a, b *PrivateKey) *PrivateKey {
+	sum := &secp256k1.Fn{}
+	sum.Add(a.key, b.key)
+	return &PrivateKey{
+		key: sum,
+	}
+}
+
+func SumPublicKeys(a, b *PublicKey) *PublicKey {
+	sum := &secp256k1.Point{}
+	sum.Add(a.key, b.key)
+	return &PublicKey{
+		key: sum,
+	}
 }
