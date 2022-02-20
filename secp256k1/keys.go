@@ -268,18 +268,18 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	return fpToFn(&rx).Eq(sig.r), nil
 }
 
-func SumPrivateKeys(a, b *PrivateKey) *PrivateKey {
-	sum := &secp256k1.Fn{}
-	sum.Add(a.key, b.key)
+func MulPrivateKeys(a, b *PrivateKey) *PrivateKey {
+	res := &secp256k1.Fn{}
+	res.Mul(a.key, b.key)
 	return &PrivateKey{
-		key: sum,
+		key: res,
 	}
 }
 
-func SumPublicKeys(a, b *PublicKey) *PublicKey {
-	sum := &secp256k1.Point{}
-	sum.Add(a.key, b.key)
+func MulPublicKeyAndSecret(pub *PublicKey, secret *PrivateKey) *PublicKey {
+	res := &secp256k1.Point{}
+	res.Scale(pub.key, secret.key)
 	return &PublicKey{
-		key: sum,
+		key: res,
 	}
 }
