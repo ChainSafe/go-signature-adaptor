@@ -18,19 +18,61 @@ type PrivateKey struct {
 	key *secp256k1.Fn
 }
 
+func (k *PrivateKey) Encode() ([]byte, error) {
+	var b [32]byte
+	k.key.PutB32(b[:])
+	return b[:], nil
+}
+
+func (k *PrivateKey) Decode(b []byte) error {
+	k.key = &secp256k1.Fn{}
+	k.key.SetB32(b)
+	return nil
+}
+
+func (k *PrivateKey) MarshalJSON() ([]byte, error) {
+	return k.Encode()
+}
+
+func (k *PrivateKey) UnmarshalJSON(b []byte) error {
+	return k.Decode(b)
+}
+
 // PublicKey ...
 type PublicKey struct {
 	key *secp256k1.Point
 }
 
-func (k *PublicKey) Decode(b []byte) {
+func (k *PublicKey) Encode() ([]byte, error) {
+	var b [33]byte
+	k.key.PutBytes(b[:])
+	return b[:], nil
+}
+
+func (k *PublicKey) Decode(b []byte) error {
 	k.key = &secp256k1.Point{}
 	k.key.SetBytes(b)
+	return nil
+}
+
+func (k *PublicKey) MarshalJSON() ([]byte, error) {
+	return k.Encode()
+}
+
+func (k *PublicKey) UnmarshalJSON(b []byte) error {
+	return k.Decode(b)
 }
 
 type Signature struct {
 	v    byte
 	r, s *secp256k1.Fn
+}
+
+func (s *Signature) Encode() ([]byte, error) {
+	var b [64]byte
+	s.r.PutB32(b[:32])
+	s.s.PutB32(b[32:])
+	return b[:], nil
 }
 
 func (s *Signature) Decode(b []byte) error {
@@ -44,6 +86,14 @@ func (s *Signature) Decode(b []byte) error {
 	s.s = &secp256k1.Fn{}
 	s.s.SetB32(b[:32])
 	return nil
+}
+
+func (s *Signature) MarshalJSON() ([]byte, error) {
+	return s.Encode()
+}
+
+func (s *Signature) UnmarshalJSON(b []byte) error {
+	return s.Decode(b)
 }
 
 func GenerateKeypair() *Keypair {

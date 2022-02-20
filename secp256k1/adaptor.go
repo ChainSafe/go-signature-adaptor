@@ -35,9 +35,28 @@ type Adaptor struct {
 	proof *dleqProof
 }
 
-func (a *Adaptor) Decode(b []byte) error {
-	const expectedLength = 33 + 33 + (32 * 3)
-	if len(b) != expectedLength {
+const encodedAdaptorSize = 33 + 33 + (32 * 3)
+
+func (s *Adaptor) Encode() ([]byte, error) {
+	var b [encodedAdaptorSize]byte
+	s.proof.R_p.PutBytes(b[:33])
+	s.proof.R.PutBytes(b[33:66])
+	s.s.PutB32(b[66:98])
+	s.proof.z.PutB32(b[98 : 98+32])
+	s.proof.s.PutB32(b[98+32:])
+	return b[:], nil
+}
+
+func (s *Adaptor) MarshalJSON() ([]byte, error) {
+	return s.Encode()
+}
+
+func (s *Adaptor) UnmarshalJSON(b []byte) error {
+	return s.Decode(b)
+}
+
+func (s *Adaptor) Decode(b []byte) error {
+	if len(b) != encodedAdaptorSize {
 		return errors.New("input slice has invalid length")
 	}
 
@@ -65,10 +84,10 @@ func (a *Adaptor) Decode(b []byte) error {
 		return err
 	}
 
-	a.r = fpToFn(&r_p)
-	a.s = s_a
+	s.r = fpToFn(&r_p)
+	s.s = s_a
 
-	a.proof = &dleqProof{
+	s.proof = &dleqProof{
 		R:   R,
 		R_p: R_p,
 		z:   z,
