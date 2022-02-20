@@ -16,7 +16,8 @@ func TestAdaptor_SignAndVerify(t *testing.T) {
 	sig, err := kp.AdaptorSign(msg[:])
 	require.NoError(t, err)
 
-	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.adaptor)
+	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.EncryptionKey(),
+		sig.AdaptorWithSecret.adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
 }
@@ -28,12 +29,14 @@ func TestRecoverFromAdaptorAndSignature(t *testing.T) {
 	sig, err := kp.AdaptorSign(msg[:])
 	require.NoError(t, err)
 
-	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.adaptor)
+	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.EncryptionKey(),
+		sig.AdaptorWithSecret.adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
 
 	// TODO: fix this, doesn't work with signatures we generated
-	secret, err := RecoverFromAdaptorAndSignature(sig.AdaptorWithSecret.adaptor, sig.Signature)
+	secret, err := RecoverFromAdaptorAndSignature(sig.AdaptorWithSecret.adaptor, sig.AdaptorWithSecret.EncryptionKey(),
+		sig.Signature)
 	require.NoError(t, err)
 	require.True(t, secret.Eq(sig.AdaptorWithSecret.secret))
 }
@@ -74,15 +77,17 @@ func TestAdaptor_ValidPlain(t *testing.T) {
 
 	Y := &secp256k1.Point{}
 	Y.SetBytes(encryptionkeyStr)
-	adaptor.proof.Y = Y
+	encryptionKey := &PublicKey{
+		key: Y,
+	}
 
 	// recover decryption key
-	secret, err := RecoverFromAdaptorAndSignature(adaptor, sig)
+	secret, err := RecoverFromAdaptorAndSignature(adaptor, encryptionKey, sig)
 	require.NoError(t, err)
 	require.True(t, secret.Eq(y))
 
 	// TODO: dleq check fails, probably due to hash issues
-	ok, err = pubkey.VerifyAdaptor(messageHashStr, adaptor)
+	ok, err = pubkey.VerifyAdaptor(messageHashStr, encryptionKey, adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
 }
