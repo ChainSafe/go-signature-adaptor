@@ -19,6 +19,14 @@ type PrivateKey struct {
 	key *secp256k1.Fn
 }
 
+func (k *PrivateKey) Public() *PublicKey {
+	pub := &secp256k1.Point{}
+	pub.BaseExp(k.key)
+	return &PublicKey{
+		key: pub,
+	}
+}
+
 func (k *PrivateKey) Encode() ([]byte, error) {
 	var b [32]byte
 	k.key.PutB32(b[:])
@@ -60,7 +68,7 @@ func (k *PublicKey) Encode() ([]byte, error) {
 	return b[:], nil
 }
 
-func (k *PublicKey) EncodeDecompressed() ([]byte, error) { 
+func (k *PublicKey) EncodeDecompressed() ([]byte, error) {
 	var b [64]byte
 	x, y, err := k.key.XY()
 	if err != nil {
@@ -69,7 +77,7 @@ func (k *PublicKey) EncodeDecompressed() ([]byte, error) {
 
 	x.SetB32(b[:32])
 	y.SetB32(b[32:])
-	return b[:], nil	
+	return b[:], nil
 }
 
 func (k *PublicKey) Decode(b []byte) error {
