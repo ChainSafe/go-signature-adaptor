@@ -60,6 +60,18 @@ func (k *PublicKey) Encode() ([]byte, error) {
 	return b[:], nil
 }
 
+func (k *PublicKey) EncodeDecompressed() ([]byte, error) { 
+	var b [64]byte
+	x, y, err := k.key.XY()
+	if err != nil {
+		return nil, err
+	}
+
+	x.SetB32(b[:32])
+	y.SetB32(b[32:])
+	return b[:], nil	
+}
+
 func (k *PublicKey) Decode(b []byte) error {
 	k.key = &secp256k1.Point{}
 	k.key.SetBytes(b)
