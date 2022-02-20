@@ -24,6 +24,12 @@ func (a *AdaptorWithSecret) Adaptor() *Adaptor {
 	return a.adaptor
 }
 
+func (a *AdaptorWithSecret) Secret() *PrivateKey {
+	return &PrivateKey{
+		key: a.secret,
+	}
+}
+
 type Adaptor struct {
 	r, s  *secp256k1.Fn
 	proof *dleqProof
