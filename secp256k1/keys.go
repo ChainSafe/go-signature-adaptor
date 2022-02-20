@@ -1,6 +1,7 @@
 package secp256k1
 
 import (
+	"encoding/json"
 	"errors"
 
 	"github.com/renproject/secp256k1"
@@ -31,10 +32,20 @@ func (k *PrivateKey) Decode(b []byte) error {
 }
 
 func (k *PrivateKey) MarshalJSON() ([]byte, error) {
-	return k.Encode()
+	b, err := k.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(b)
 }
 
-func (k *PrivateKey) UnmarshalJSON(b []byte) error {
+func (k *PrivateKey) UnmarshalJSON(in []byte) error {
+	var b []byte
+	if err := json.Unmarshal(in, &b); err != nil {
+		return err
+	}
+
 	return k.Decode(b)
 }
 
@@ -56,10 +67,20 @@ func (k *PublicKey) Decode(b []byte) error {
 }
 
 func (k *PublicKey) MarshalJSON() ([]byte, error) {
-	return k.Encode()
+	b, err := k.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(b)
 }
 
-func (k *PublicKey) UnmarshalJSON(b []byte) error {
+func (k *PublicKey) UnmarshalJSON(in []byte) error {
+	var b []byte
+	if err := json.Unmarshal(in, &b); err != nil {
+		return err
+	}
+
 	return k.Decode(b)
 }
 
@@ -89,10 +110,20 @@ func (s *Signature) Decode(b []byte) error {
 }
 
 func (s *Signature) MarshalJSON() ([]byte, error) {
-	return s.Encode()
+	b, err := s.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(b)
 }
 
-func (s *Signature) UnmarshalJSON(b []byte) error {
+func (s *Signature) UnmarshalJSON(in []byte) error {
+	var b []byte
+	if err := json.Unmarshal(in, &b); err != nil {
+		return err
+	}
+
 	return s.Decode(b)
 }
 

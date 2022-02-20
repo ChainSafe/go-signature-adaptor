@@ -2,6 +2,7 @@ package secp256k1
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -48,10 +49,20 @@ func (s *Adaptor) Encode() ([]byte, error) {
 }
 
 func (s *Adaptor) MarshalJSON() ([]byte, error) {
-	return s.Encode()
+	b, err := s.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(b)
 }
 
-func (s *Adaptor) UnmarshalJSON(b []byte) error {
+func (s *Adaptor) UnmarshalJSON(in []byte) error {
+	var b []byte
+	if err := json.Unmarshal(in, &b); err != nil {
+		return err
+	}
+
 	return s.Decode(b)
 }
 
