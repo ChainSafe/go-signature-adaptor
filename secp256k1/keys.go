@@ -1,6 +1,7 @@
 package secp256k1
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/renproject/secp256k1"
@@ -18,10 +19,42 @@ type PrivateKey struct {
 	key *secp256k1.Fn
 }
 
-func (pk *PrivateKey) Encode() []byte {
+func (k *PrivateKey) Public() *PublicKey {
+	pub := &secp256k1.Point{}
+	pub.BaseExp(k.key)
+	return &PublicKey{
+		key: pub,
+	}
+}
+
+func (k *PrivateKey) Encode() ([]byte, error) {
 	var b [32]byte
-	pk.key.PutB32(b[:])
-	return b[:]
+	k.key.PutB32(b[:])
+	return b[:], nil
+}
+
+func (k *PrivateKey) Decode(b []byte) error {
+	k.key = &secp256k1.Fn{}
+	k.key.SetB32(b)
+	return nil
+}
+
+func (k *PrivateKey) MarshalJSON() ([]byte, error) {
+	b, err := k.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(b)
+}
+
+func (k *PrivateKey) UnmarshalJSON(in []byte) error {
+	var b []byte
+	if err := json.Unmarshal(in, &b); err != nil {
+		return err
+	}
+
+	return k.Decode(b)
 }
 
 // PublicKey ...
@@ -29,14 +62,58 @@ type PublicKey struct {
 	key *secp256k1.Point
 }
 
-func (k *PublicKey) Decode(b []byte) {
+func (k *PublicKey) Encode() ([]byte, error) {
+	var b [33]byte
+	k.key.PutBytes(b[:])
+	return b[:], nil
+}
+
+func (k *PublicKey) EncodeDecompressed() ([]byte, error) {
+	var b [64]byte
+	x, y, err := k.key.XY()
+	if err != nil {
+		return nil, err
+	}
+
+	x.SetB32(b[:32])
+	y.SetB32(b[32:])
+	return b[:], nil
+}
+
+func (k *PublicKey) Decode(b []byte) error {
 	k.key = &secp256k1.Point{}
 	k.key.SetBytes(b)
+	return nil
+}
+
+func (k *PublicKey) MarshalJSON() ([]byte, error) {
+	b, err := k.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(b)
+}
+
+func (k *PublicKey) UnmarshalJSON(in []byte) error {
+	var b []byte
+	if err := json.Unmarshal(in, &b); err != nil {
+		return err
+	}
+
+	return k.Decode(b)
 }
 
 type Signature struct {
 	v    byte
 	r, s *secp256k1.Fn
+}
+
+func (s *Signature) Encode() ([]byte, error) {
+	var b [64]byte
+	s.r.PutB32(b[:32])
+	s.s.PutB32(b[32:])
+	return b[:], nil
 }
 
 func (s *Signature) Decode(b []byte) error {
@@ -52,28 +129,22 @@ func (s *Signature) Decode(b []byte) error {
 	return nil
 }
 
-// r, s, v
-func (sig *Signature) Encode() ([]byte, error) {
-	fmt.Println(" sig r: ", sig.r)
+func (s *Signature) MarshalJSON() ([]byte, error) {
+	b, err := s.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(b)
+}
+
+func (s *Signature) UnmarshalJSON(in []byte) error {
 	var b []byte
-	var r [32]byte
-	if sig.r == nil {
-		return nil, errors.New("invalid r value")
+	if err := json.Unmarshal(in, &b); err != nil {
+		return err
 	}
-	sig.r.PutB32(r[:])
-	fmt.Println("r: ", len(r), " ", r)
-	b = append(b, r[:]...)
-	var s [32]byte
-	if sig.s == nil {
-		return nil, errors.New("invalid s value")
-	}
-	sig.s.PutB32(s[:])
-	fmt.Println("s: ", len(s), " ", s)
-	// 0 byte for v
-	b = append(b, s[:]...)
-	//v := byte(0)
-	//b = append(b, v)m
-	return b, nil
+
+	return s.Decode(b)
 }
 
 func GenerateKeypair() *Keypair {
@@ -163,6 +234,11 @@ func (kp *Keypair) Public() *PublicKey {
 	return kp.public
 }
 
+// Private ...
+func (kp *Keypair) Private() *PrivateKey {
+	return kp.private
+}
+
 // Verify ...
 func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	if len(msg) != MessageLength {
@@ -195,20 +271,18 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	return fpToFn(&rx).Eq(sig.r), nil
 }
 
-func (pk *PublicKey) Encode() []byte {
-	var b [33]byte
-	pk.key.PutBytes(b[:])
-	return b[:]
+func MulPrivateKeys(a, b *PrivateKey) *PrivateKey {
+	res := &secp256k1.Fn{}
+	res.Mul(a.key, b.key)
+	return &PrivateKey{
+		key: res,
+	}
 }
 
-// TODO see if this is correct
-func (pk *PublicKey) EncodeDecompressed() ([]byte, error) {
-	var b [64]byte
-	x, y, err := pk.key.XY()
-	if err != nil {
-		return nil, err
+func MulPublicKeyAndSecret(pub *PublicKey, secret *PrivateKey) *PublicKey {
+	res := &secp256k1.Point{}
+	res.Scale(pub.key, secret.key)
+	return &PublicKey{
+		key: res,
 	}
-	x.PutB32(b[:32])
-	y.PutB32(b[32:])
-	return b[:], err
 }

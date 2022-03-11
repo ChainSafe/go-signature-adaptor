@@ -17,7 +17,8 @@ func TestAdaptor_SignAndVerify(t *testing.T) {
 	sig, err := kp.AdaptorSign(msg[:])
 	require.NoError(t, err)
 
-	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.adaptor)
+	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.EncryptionKey(),
+		sig.AdaptorWithSecret.adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
 }
@@ -29,7 +30,8 @@ func TestRecoverFromAdaptorAndSignature(t *testing.T) {
 	sig, err := kp.AdaptorSign(msg[:])
 	require.NoError(t, err)
 
-	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.adaptor)
+	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.EncryptionKey(),
+		sig.AdaptorWithSecret.adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -43,8 +45,8 @@ func TestRecoverFromAdaptorAndSignature(t *testing.T) {
 	fmt.Println(sig.Signature.s)
 
 	// TODO: fix this, doesn't work with signatures we generated
-	secret, err := RecoverFromAdaptorAndSignature(sig.AdaptorWithSecret.adaptor, sig.Signature)
-	fmt.Println(err)
+	secret, err := RecoverFromAdaptorAndSignature(sig.AdaptorWithSecret.adaptor, sig.AdaptorWithSecret.EncryptionKey(),
+		sig.Signature)
 	require.NoError(t, err)
 	require.True(t, secret.Eq(sig.AdaptorWithSecret.secret))
 }
@@ -85,15 +87,34 @@ func TestAdaptor_ValidPlain(t *testing.T) {
 
 	Y := &secp256k1.Point{}
 	Y.SetBytes(encryptionkeyStr)
-	adaptor.proof.Y = Y
+	encryptionKey := &PublicKey{
+		key: Y,
+	}
 
 	// recover decryption key
-	secret, err := RecoverFromAdaptorAndSignature(adaptor, sig)
+	secret, err := RecoverFromAdaptorAndSignature(adaptor, encryptionKey, sig)
 	require.NoError(t, err)
 	require.True(t, secret.Eq(y))
 
 	// TODO: dleq check fails, probably due to hash issues
-	ok, err = pubkey.VerifyAdaptor(messageHashStr, adaptor)
+	ok, err = pubkey.VerifyAdaptor(messageHashStr, encryptionKey, adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
+}
+
+func TestAdaptor_Encode(t *testing.T) {
+	adaptorStr, err := hex.DecodeString("03424d14a5471c048ab87b3b83f6085d125d5864249ae4297a57c84e74710bb6730223f325042fce535d040fee52ec13231bf709ccd84233c6944b90317e62528b2527dff9d659a96db4c99f9750168308633c1867b70f3a18fb0f4539a1aecedcd1fc0148fc22f36b6303083ece3f872b18e35d368b3958efe5fb081f7716736ccb598d269aa3084d57e1855e1ea9a45efc10463bbf32ae378029f5763ceb40173f")
+	require.NoError(t, err)
+
+	adaptor := &Adaptor{}
+	err = adaptor.Decode(adaptorStr)
+	require.NoError(t, err)
+
+	res, err := adaptor.Encode()
+	require.NoError(t, err)
+
+	adaptor2 := &Adaptor{}
+	err = adaptor2.Decode(res)
+	require.NoError(t, err)
+	require.Equal(t, adaptor, adaptor2)
 }

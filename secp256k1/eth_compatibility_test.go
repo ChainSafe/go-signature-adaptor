@@ -15,7 +15,9 @@ func TestSignature_EthereumCompatibility(t *testing.T) {
 	require.NoError(t, err)
 
 	msg = [32]byte{1, 2, 3}
-	ethSig, err := secp256k1.Sign(msg[:], kp.private.Encode())
+	priv, err := kp.private.Encode()
+	require.NoError(t, err)
+	ethSig, err := secp256k1.Sign(msg[:], priv)
 	require.NoError(t, err)
 
 	// Our verify with eth sig WORKS NICE
@@ -31,8 +33,9 @@ func TestSignature_EthereumCompatibility(t *testing.T) {
 	encSig, err := sig.Encode()
 	require.NoError(t, err)
 	require.Equal(t, len(encSig), 64)
-	pubKey := kp.Public().Encode()
-	//verified := secp256k1.VerifySignature(pubKey, msg[:], encSig[:64])
+	pubKey, err := kp.Public().Encode()
+	require.NoError(t, err)
+
 	verified := secp256k1.VerifySignature(pubKey, msg[:], encSig[:])
 	assert.True(t, verified)
 }
