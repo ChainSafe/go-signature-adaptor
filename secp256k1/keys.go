@@ -3,7 +3,6 @@ package secp256k1
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/renproject/secp256k1"
 )
 
@@ -210,7 +209,6 @@ func sign(k, z, x *secp256k1.Fn) (*Signature, error) {
 	}
 
 	r := fpToFn(&r_fp)
-	fmt.Println("r here: ", r)
 
 	// s = (z + r*x) * k^(-1)
 	rx := &secp256k1.Fn{}
@@ -219,8 +217,6 @@ func sign(k, z, x *secp256k1.Fn) (*Signature, error) {
 	sum.Add(z, rx)
 	s := &secp256k1.Fn{}
 	s.Mul(sum, kinv)
-
-	fmt.Println("s here: ", s)
 
 	return &Signature{
 		r: r,

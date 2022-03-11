@@ -2,7 +2,6 @@ package secp256k1
 
 import (
 	"encoding/hex"
-	"fmt"
 	"testing"
 
 	"github.com/renproject/secp256k1"
@@ -34,15 +33,6 @@ func TestRecoverFromAdaptorAndSignature(t *testing.T) {
 		sig.AdaptorWithSecret.adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
-
-	fmt.Println("adaptor r")
-	fmt.Println(sig.AdaptorWithSecret.adaptor.r)
-	fmt.Println("adaptor s")
-	fmt.Println(sig.AdaptorWithSecret.adaptor.s)
-	fmt.Println("signature r")
-	fmt.Println(sig.Signature.r)
-	fmt.Println("signature s")
-	fmt.Println(sig.Signature.s)
 
 	// TODO: fix this, doesn't work with signatures we generated
 	secret, err := RecoverFromAdaptorAndSignature(sig.AdaptorWithSecret.adaptor, sig.AdaptorWithSecret.EncryptionKey(),
