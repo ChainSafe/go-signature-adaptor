@@ -146,7 +146,6 @@ func (kp *Keypair) AdaptorSign(msg []byte) (*SignatureWithAdaptor, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	adaptor, err := adaptorSign(&k, z, kp.private.key)
 	if err != nil {
 		return nil, err

@@ -3,7 +3,6 @@ package secp256k1
 import (
 	"encoding/json"
 	"errors"
-
 	"github.com/renproject/secp256k1"
 )
 
