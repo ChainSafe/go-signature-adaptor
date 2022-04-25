@@ -49,7 +49,6 @@ func (a *AdaptorWithSecret) Decrypt() (*Signature, error) {
 
 type Adaptor struct {
 	R, R_a *secp256k1.Point
-	r      *secp256k1.Fp
 	s      *secp256k1.Fn
 	proof  *dleqProof
 }
@@ -106,14 +105,7 @@ func (s *Adaptor) Decode(b []byte) error {
 	b = b[32:]
 	s_p := &secp256k1.Fn{}
 	s_p.SetB32(b[:32])
-	b = b[32:]
 
-	r, _, err := R.XY()
-	if err != nil {
-		return err
-	}
-
-	s.r = &r
 	s.s = s_a
 	s.R_a = R_a
 	s.R = R
@@ -211,7 +203,6 @@ func adaptorSign(z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 		adaptor: &Adaptor{
 			R:     R,
 			R_a:   R_a,
-			r:     &r_fp,
 			s:     s,
 			proof: proof,
 		},
@@ -232,11 +223,16 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, sig *Ada
 		return false, errors.New("message overflow")
 	}
 
+	r, _, err := sig.R.XY()
+	if err != nil {
+		return false, err
+	}
+
 	// check sig.proof.R == (z*G + r'*P) * s^(-1)
 	zG := &secp256k1.Point{}
 	zG.BaseExp(z)
 	rP := &secp256k1.Point{}
-	rP.Scale(k.key, fpToFn(sig.r))
+	rP.Scale(k.key, fpToFn(&r))
 	sum := &secp256k1.Point{}
 	sum.Add(zG, rP)
 	sinv := &secp256k1.Fn{}
@@ -253,7 +249,12 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, sig *Ada
 
 func RecoverFromAdaptorAndSignature(adaptor *Adaptor, encryptionKey *PublicKey, sig *Signature) (*secp256k1.Fn, error) {
 	// check sig.r == x-coordinate of R' = k*Y
-	if !adaptor.r.Eq(sig.r) {
+	r, _, err := adaptor.R.XY()
+	if err != nil {
+		return nil, err
+	}
+
+	if !r.Eq(sig.r) {
 		return nil, errors.New("invalid signature for adaptor: r check failed")
 	}
 

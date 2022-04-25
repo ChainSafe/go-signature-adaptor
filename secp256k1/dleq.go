@@ -53,7 +53,7 @@ func dleqProve(w *secp256k1.Fn, R_a, R, Y *secp256k1.Point) (*dleqProof, error) 
 func dleqVerify(encryptionKey *PublicKey, proof *dleqProof, R, R_p *secp256k1.Point) bool {
 	// Q = s*G - z*R
 	// Q' = s*Y - z*R'
-	// check z == H( R || R' || Q || Q' )
+	// check z == H( R || Y ||  R' || Q || Q' )
 
 	sG := &secp256k1.Point{}
 	sG.BaseExp(proof.s)
@@ -71,16 +71,16 @@ func dleqVerify(encryptionKey *PublicKey, proof *dleqProof, R, R_p *secp256k1.Po
 	return h.Eq(proof.z)
 }
 
-func hashToScalar(R, R_p, Y, Q, Q_p *secp256k1.Point) *secp256k1.Fn {
+func hashToScalar(R, Y, R_p, Q, Q_p *secp256k1.Point) *secp256k1.Fn {
 	var rb, rpb, yb, qb, qpb [33]byte
 	R.PutBytes(rb[:])
-	R_p.PutBytes(rpb[:])
 	Y.PutBytes(yb[:])
+	R_p.PutBytes(rpb[:])
 	Q.PutBytes(qb[:])
 	Q_p.PutBytes(qpb[:])
 
-	b := append(rb[:], rpb[:]...)
-	b = append(b, yb[:]...)
+	b := append(rb[:], yb[:]...)
+	b = append(b, rpb[:]...)
 	b = append(b, qb[:]...)
 	b = append(b, qpb[:]...)
 	h := sha256.Sum256(append(tag, b...))
