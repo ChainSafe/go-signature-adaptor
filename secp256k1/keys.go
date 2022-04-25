@@ -3,6 +3,7 @@ package secp256k1
 import (
 	"encoding/json"
 	"errors"
+
 	"github.com/renproject/secp256k1"
 )
 
@@ -64,6 +65,11 @@ type PublicKey struct {
 func (k *PublicKey) Encode() ([]byte, error) {
 	var b [33]byte
 	k.key.PutBytes(b[:])
+
+	// go-ethereum requires an encoded public key to specify its "type"
+	// (ie. compressed, uncompressed, or hybrid)
+	// https://github.com/quan8/go-ethereum/blob/a1c09b93871dd3770adffb177086abda1b2ff3af/vendor/github.com/btcsuite/btcd/btcec/pubkey.go#L69
+	b[0] |= 0x2
 	return b[:], nil
 }
 
@@ -104,8 +110,9 @@ func (k *PublicKey) UnmarshalJSON(in []byte) error {
 }
 
 type Signature struct {
-	v    byte
-	r, s *secp256k1.Fn
+	v byte
+	r *secp256k1.Fp
+	s *secp256k1.Fn
 }
 
 func (s *Signature) Encode() ([]byte, error) {
@@ -120,7 +127,7 @@ func (s *Signature) Decode(b []byte) error {
 		return errors.New("signature encoding must be 64/65 bytes")
 	}
 	// TODO: decode v
-	s.r = &secp256k1.Fn{}
+	s.r = &secp256k1.Fp{}
 	s.r.SetB32(b[:32])
 	b = b[32:]
 	s.s = &secp256k1.Fn{}
@@ -159,17 +166,6 @@ func GenerateKeypair() *Keypair {
 			key: &priv,
 		},
 	}
-}
-
-func fpToFn(fp *secp256k1.Fp) *secp256k1.Fn {
-	var b [32]byte
-	fp.PutB32(b[:])
-	fn := &secp256k1.Fn{}
-	overflow := fn.SetB32(b[:])
-	if overflow {
-		panic("got overflow converting from fp to fn")
-	}
-	return fn
 }
 
 // Sign ...
@@ -219,7 +215,7 @@ func sign(z, x *secp256k1.Fn) (*Signature, error) {
 	s.Mul(sum, kinv)
 
 	return &Signature{
-		r: r,
+		r: &r_fp,
 		s: s,
 		v: 0, //TODO
 	}, nil
@@ -247,7 +243,7 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 
 	// R = (r*P + z*G) * s^(-1)
 	rP := &secp256k1.Point{}
-	rP.Scale(k.key, sig.r)
+	rP.Scale(k.key, fpToFn(sig.r))
 
 	sinv := &secp256k1.Fn{}
 	sinv.Inverse(sig.s)
@@ -264,7 +260,7 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 		return false, err
 	}
 
-	return fpToFn(&rx).Eq(sig.r), nil
+	return rx.Eq(sig.r), nil
 }
 
 func MulPrivateKeys(a, b *PrivateKey) *PrivateKey {
