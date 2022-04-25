@@ -132,21 +132,16 @@ func (kp *Keypair) AdaptorSign(msg []byte) (*SignatureWithAdaptor, error) {
 		return nil, errors.New("invalid message length: not 32 byte hash")
 	}
 
-	// generate random scalar
-	k, err := secp256k1.RandomFnNoPanic()
-	if err != nil {
-		return nil, err
-	}
-
 	// hash of message
 	z := &secp256k1.Fn{}
 	_ = z.SetB32(msg) // TODO: check overflow
 
-	sig, err := sign(&k, z, kp.private.key)
+	sig, err := sign(z, kp.private.key)
 	if err != nil {
 		return nil, err
 	}
-	adaptor, err := adaptorSign(&k, z, kp.private.key)
+
+	adaptor, err := adaptorSign(z, kp.private.key)
 	if err != nil {
 		return nil, err
 	}
@@ -157,19 +152,18 @@ func (kp *Keypair) AdaptorSign(msg []byte) (*SignatureWithAdaptor, error) {
 	}, nil
 }
 
-func adaptorSign(k, z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
+func adaptorSign(z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 	// generate encryption secret
-	secret, err := secp256k1.RandomFnNoPanic()
+	secret, err := newRandomScalar()
 	if err != nil {
 		return nil, err
 	}
 
-	k2, err := secp256k1.RandomFnNoPanic()
+	// generate random scalar
+	k, err := newRandomScalar()
 	if err != nil {
 		return nil, err
 	}
-
-	k = &k2
 
 	// R = k*G
 	R := &secp256k1.Point{}
@@ -178,7 +172,7 @@ func adaptorSign(k, z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 	// calculate R and R' inputs for dleqProve
 	// R' = k*Y = k*secret*G
 	Y := &secp256k1.Point{}
-	Y.BaseExp(&secret)
+	Y.BaseExp(secret)
 	R_p := &secp256k1.Point{}
 	R_p.Scale(Y, k)
 
@@ -211,7 +205,7 @@ func adaptorSign(k, z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 			s:     s,
 			proof: proof,
 		},
-		secret:        &secret,
+		secret:        secret,
 		encryptionKey: Y,
 	}, nil
 }
@@ -226,23 +220,23 @@ func adaptorSign(k, z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 // s := k + w*z
 // proof := (R, R', z, s)
 func dleqProve(w *secp256k1.Fn, R, R_p, Y *secp256k1.Point) (*dleqProof, error) {
-	k, err := secp256k1.RandomFnNoPanic()
+	k, err := newRandomScalar()
 	if err != nil {
 		return nil, err
 	}
 
 	Q := &secp256k1.Point{}
-	Q.BaseExp(&k)
+	Q.BaseExp(k)
 
 	Q_p := &secp256k1.Point{}
-	Q_p.Scale(Y, &k)
+	Q_p.Scale(Y, k)
 
 	z := hashToScalar(R, Y, R_p, Q, Q_p)
 
 	wz := &secp256k1.Fn{}
 	wz.Mul(w, z)
 	s := &secp256k1.Fn{}
-	s.Add(&k, wz)
+	s.Add(k, wz)
 
 	return &dleqProof{
 		R:   R,

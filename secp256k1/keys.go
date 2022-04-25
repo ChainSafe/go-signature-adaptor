@@ -178,23 +178,23 @@ func (kp *Keypair) Sign(msg []byte) (*Signature, error) {
 		return nil, errors.New("invalid message length: not 32 byte hash")
 	}
 
-	// generate random scalar
-	k, err := secp256k1.RandomFnNoPanic()
-	if err != nil {
-		return nil, err
-	}
-
 	// hash of message
 	z := &secp256k1.Fn{}
 	_ = z.SetB32(msg) // TODO: check overflow
 
-	return sign(&k, z, kp.private.key)
+	return sign(z, kp.private.key)
 }
 
 // k := random value
 // z := hash(message)
 // x := private key
-func sign(k, z, x *secp256k1.Fn) (*Signature, error) {
+func sign(z, x *secp256k1.Fn) (*Signature, error) {
+	// generate random scalar
+	k, err := newRandomScalar()
+	if err != nil {
+		return nil, err
+	}
+
 	kinv := &secp256k1.Fn{}
 	kinv.Inverse(k)
 
