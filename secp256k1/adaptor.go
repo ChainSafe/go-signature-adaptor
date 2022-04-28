@@ -1,17 +1,10 @@
 package secp256k1
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 
 	"github.com/renproject/secp256k1"
-)
-
-var (
-	dleqStr = []byte("DLEQ")
-	dleqTag = sha256.Sum256(dleqStr)
-	tag     = append(dleqTag[:], dleqTag[:]...)
 )
 
 type AdaptorWithSecret struct {
@@ -36,17 +29,36 @@ func (a *AdaptorWithSecret) EncryptionKey() *PublicKey {
 	}
 }
 
+func (a *AdaptorWithSecret) Decrypt() (*Signature, error) {
+	y_inv := &secp256k1.Fn{}
+	y_inv.Inverse(a.secret)
+	s := &secp256k1.Fn{}
+	s.Mul(a.adaptor.s, y_inv)
+
+	// negate s if high
+	r, _, err := a.adaptor.R.XY()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Signature{
+		r: &r,
+		s: s,
+	}, nil
+}
+
 type Adaptor struct {
-	r, s  *secp256k1.Fn
-	proof *dleqProof
+	R, R_a *secp256k1.Point
+	s      *secp256k1.Fn
+	proof  *dleqProof
 }
 
 const encodedAdaptorSize = 33 + 33 + (32 * 3)
 
 func (s *Adaptor) Encode() ([]byte, error) {
 	var b [encodedAdaptorSize]byte
-	s.proof.R_p.PutBytes(b[:33])
-	s.proof.R.PutBytes(b[33:66])
+	s.R.PutBytes(b[:33])
+	s.R_a.PutBytes(b[33:66])
 	s.s.PutB32(b[66:98])
 	s.proof.z.PutB32(b[98 : 98+32])
 	s.proof.s.PutB32(b[98+32:])
@@ -77,11 +89,11 @@ func (s *Adaptor) Decode(b []byte) error {
 	}
 
 	// parse adaptor
-	R_p := &secp256k1.Point{}
-	R_p.SetBytes(b[:33])
-	b = b[33:]
 	R := &secp256k1.Point{}
 	R.SetBytes(b[:33])
+	b = b[33:]
+	R_a := &secp256k1.Point{}
+	R_a.SetBytes(b[:33])
 	b = b[33:]
 	s_a := &secp256k1.Fn{}
 	s_a.SetB32(b[:32])
@@ -93,29 +105,17 @@ func (s *Adaptor) Decode(b []byte) error {
 	b = b[32:]
 	s_p := &secp256k1.Fn{}
 	s_p.SetB32(b[:32])
-	b = b[32:]
 
-	r_p, _, err := R_p.XY()
-	if err != nil {
-		return err
-	}
-
-	s.r = fpToFn(&r_p)
 	s.s = s_a
+	s.R_a = R_a
+	s.R = R
 
 	s.proof = &dleqProof{
-		R:   R,
-		R_p: R_p,
-		z:   z,
-		s:   s_p,
+		z: z,
+		s: s_p,
 	}
 
 	return nil
-}
-
-type dleqProof struct {
-	R, R_p *secp256k1.Point
-	z, s   *secp256k1.Fn
 }
 
 type SignatureWithAdaptor struct {
@@ -132,21 +132,16 @@ func (kp *Keypair) AdaptorSign(msg []byte) (*SignatureWithAdaptor, error) {
 		return nil, errors.New("invalid message length: not 32 byte hash")
 	}
 
-	// generate random scalar
-	k, err := secp256k1.RandomFnNoPanic()
-	if err != nil {
-		return nil, err
-	}
-
 	// hash of message
 	z := &secp256k1.Fn{}
 	_ = z.SetB32(msg) // TODO: check overflow
 
-	sig, err := sign(&k, z, kp.private.key)
+	adaptor, err := adaptorSign(z, kp.private.key)
 	if err != nil {
 		return nil, err
 	}
-	adaptor, err := adaptorSign(&k, z, kp.private.key)
+
+	sig, err := adaptor.Decrypt()
 	if err != nil {
 		return nil, err
 	}
@@ -157,42 +152,41 @@ func (kp *Keypair) AdaptorSign(msg []byte) (*SignatureWithAdaptor, error) {
 	}, nil
 }
 
-func adaptorSign(k, z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
+func adaptorSign(z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 	// generate encryption secret
-	secret, err := secp256k1.RandomFnNoPanic()
+	secret, err := newRandomScalar()
 	if err != nil {
 		return nil, err
 	}
 
-	k2, err := secp256k1.RandomFnNoPanic()
+	// generate random scalar
+	k, err := newRandomScalar()
 	if err != nil {
 		return nil, err
 	}
 
-	k = &k2
-
-	// R = k*G
-	R := &secp256k1.Point{}
-	R.BaseExp(k)
+	// R_a = k*G
+	R_a := &secp256k1.Point{}
+	R_a.BaseExp(k)
 
 	// calculate R and R' inputs for dleqProve
 	// R' = k*Y = k*secret*G
 	Y := &secp256k1.Point{}
-	Y.BaseExp(&secret)
-	R_p := &secp256k1.Point{}
-	R_p.Scale(Y, k)
+	Y.BaseExp(secret)
+	R := &secp256k1.Point{}
+	R.Scale(Y, k)
 
-	// r' == x-coord of R'
-	r_fp, _, err := R_p.XY()
+	// r == x-coord of R
+	r_fp, _, err := R.XY()
 	if err != nil {
 		return nil, err
 	}
 
-	r_p := fpToFn(&r_fp)
+	r := fpToFn(&r_fp)
 
 	// s' = (z + r'*x) * k^(-1)
 	rx := &secp256k1.Fn{}
-	rx.Mul(r_p, x)
+	rx.Mul(r, x)
 	sum := &secp256k1.Fn{}
 	sum.Add(z, rx)
 	kinv := &secp256k1.Fn{}
@@ -200,75 +194,21 @@ func adaptorSign(k, z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 	s := &secp256k1.Fn{}
 	s.Mul(sum, kinv)
 
-	proof, err := dleqProve(k, R, R_p, Y)
+	proof, err := dleqProve(k, R_a, R, Y)
 	if err != nil {
 		return nil, err
 	}
 
 	return &AdaptorWithSecret{
 		adaptor: &Adaptor{
-			r:     r_p,
+			R:     R,
+			R_a:   R_a,
 			s:     s,
 			proof: proof,
 		},
-		secret:        &secret,
+		secret:        secret,
 		encryptionKey: Y,
 	}, nil
-}
-
-// w := witness
-// prove R = w*G and R' = w*Y
-//
-// k := random scalar
-// Q := k*G
-// Q' := k*Y
-// z := hash( R || R' || Q || Q')
-// s := k + w*z
-// proof := (R, R', z, s)
-func dleqProve(w *secp256k1.Fn, R, R_p, Y *secp256k1.Point) (*dleqProof, error) {
-	k, err := secp256k1.RandomFnNoPanic()
-	if err != nil {
-		return nil, err
-	}
-
-	Q := &secp256k1.Point{}
-	Q.BaseExp(&k)
-
-	Q_p := &secp256k1.Point{}
-	Q_p.Scale(Y, &k)
-
-	z := hashToScalar(R, Y, R_p, Q, Q_p)
-
-	wz := &secp256k1.Fn{}
-	wz.Mul(w, z)
-	s := &secp256k1.Fn{}
-	s.Add(&k, wz)
-
-	return &dleqProof{
-		R:   R,
-		R_p: R_p,
-		z:   z,
-		s:   s,
-	}, nil
-}
-
-func hashToScalar(R, R_p, Y, Q, Q_p *secp256k1.Point) *secp256k1.Fn {
-	var rb, rpb, yb, qb, qpb [33]byte
-	R.PutBytes(rb[:])
-	R_p.PutBytes(rpb[:])
-	Y.PutBytes(yb[:])
-	Q.PutBytes(qb[:])
-	Q_p.PutBytes(qpb[:])
-
-	b := append(rb[:], rpb[:]...)
-	b = append(b, yb[:]...)
-	b = append(b, qb[:]...)
-	b = append(b, qpb[:]...)
-	h := sha256.Sum256(append(tag, b...))
-
-	fn := &secp256k1.Fn{}
-	fn.SetB32(h[:])
-	return fn
 }
 
 func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, sig *Adaptor) (bool, error) {
@@ -283,11 +223,16 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, sig *Ada
 		return false, errors.New("message overflow")
 	}
 
+	r, _, err := sig.R.XY()
+	if err != nil {
+		return false, err
+	}
+
 	// check sig.proof.R == (z*G + r'*P) * s^(-1)
 	zG := &secp256k1.Point{}
 	zG.BaseExp(z)
 	rP := &secp256k1.Point{}
-	rP.Scale(k.key, sig.r)
+	rP.Scale(k.key, fpToFn(&r))
 	sum := &secp256k1.Point{}
 	sum.Add(zG, rP)
 	sinv := &secp256k1.Fn{}
@@ -295,58 +240,21 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, sig *Ada
 	R := &secp256k1.Point{}
 	R.Scale(sum, sinv)
 
-	if !R.Eq(sig.proof.R) {
+	if !R.Eq(sig.R_a) {
 		return false, nil
 	}
 
-	return dleqVerify(encryptionKey, sig.proof), nil
-}
-
-func dleqVerify(encryptionKey *PublicKey, proof *dleqProof) bool {
-	// Q = s*G - z*R
-	// Q' = s*Y - z*R'
-	// check z == H( R || R' || Q || Q' )
-
-	sG := &secp256k1.Point{}
-	sG.BaseExp(proof.s)
-	zR := &secp256k1.Point{}
-	zR.Scale(proof.R, proof.z)
-	Q := pointSub(sG, zR)
-
-	sY := &secp256k1.Point{}
-	sY.Scale(encryptionKey.key, proof.s)
-	zRp := &secp256k1.Point{}
-	zRp.Scale(proof.R_p, proof.z)
-	Q_p := pointSub(sY, zRp)
-
-	h := hashToScalar(proof.R, encryptionKey.key, proof.R_p, Q, Q_p)
-	return h.Eq(proof.z)
-}
-
-func pointSub(a, b *secp256k1.Point) *secp256k1.Point {
-	bNeg := negatePoint(b)
-	ret := &secp256k1.Point{}
-	ret.Add(a, bNeg)
-	return ret
-}
-
-func negatePoint(p *secp256k1.Point) *secp256k1.Point {
-	one := secp256k1.NewFnFromU16(1)
-	if !one.IsOne() {
-		panic("one is not one")
-	}
-
-	negOne := &secp256k1.Fn{}
-	negOne.Negate(&one)
-
-	pNeg := &secp256k1.Point{}
-	pNeg.Scale(p, negOne)
-	return pNeg
+	return dleqVerify(encryptionKey, sig.proof, sig.R_a, sig.R), nil
 }
 
 func RecoverFromAdaptorAndSignature(adaptor *Adaptor, encryptionKey *PublicKey, sig *Signature) (*secp256k1.Fn, error) {
 	// check sig.r == x-coordinate of R' = k*Y
-	if !adaptor.r.Eq(sig.r) {
+	r, _, err := adaptor.R.XY()
+	if err != nil {
+		return nil, err
+	}
+
+	if !r.Eq(sig.r) {
 		return nil, errors.New("invalid signature for adaptor: r check failed")
 	}
 
