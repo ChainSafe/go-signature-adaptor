@@ -1,6 +1,8 @@
 package secp256k1
 
 import (
+	"encoding/hex"
+
 	"github.com/renproject/secp256k1"
 )
 
@@ -48,4 +50,15 @@ func negatePoint(p *secp256k1.Point) *secp256k1.Point {
 	pNeg := &secp256k1.Point{}
 	pNeg.Scale(p, negOne)
 	return pNeg
+}
+
+func scalarFromHex(s string) *secp256k1.Fn {
+	bytes, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	f := secp256k1.Fn{}
+	f.SetB32SecKey(bytes)
+
+	return &f
 }
