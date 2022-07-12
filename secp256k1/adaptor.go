@@ -100,8 +100,8 @@ func (s *EncryptedSignature) Decode(b []byte) error {
 	return nil
 }
 
-func (kp *Keypair) AdaptorSign(msg []byte, pk *secp256k1.Point, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
-	Y := pk
+func (kp *Keypair) AdaptorSign(msg []byte, encKey *secp256k1.Point, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
+	Y := encKey
 	if len(msg) != MessageLength {
 		return nil, errors.New("invalid message length: not 32 byte hash")
 	}
@@ -113,7 +113,7 @@ func (kp *Keypair) AdaptorSign(msg []byte, pk *secp256k1.Point, nonceFnOpt ...No
 	x := kp.Private().key
 
 	// choose nonce gen function
-	nonceFn := WithRFC6979(kp.Private(), msg)
+	nonceFn := WithRFC6979(kp.Private(), msg, &PublicKey{key: encKey})
 	if len(nonceFnOpt) > 0 {
 		nonceFn = nonceFnOpt[0]
 	}

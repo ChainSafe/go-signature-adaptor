@@ -7,9 +7,18 @@ import (
 
 type NonceFunc = func() (*secp256k1.Fn, error)
 
-func WithRFC6979(sk *PrivateKey, msg []byte) NonceFunc {
+func WithRFC6979(sk *PrivateKey, msg []byte, encKey *PublicKey) NonceFunc {
 	return func() (*secp256k1.Fn, error) {
-		return nonceRFC6979(sk, msg)
+		if encKey != nil {
+			extra, err := encKey.Encode()
+			if extra == nil {
+				return nil, err
+			}
+
+			return nonceRFC6979(sk, msg, extra[0:32])
+		}
+
+		return nonceRFC6979(sk, msg, nil)
 	}
 }
 
@@ -24,22 +33,27 @@ func WithRandom() NonceFunc {
 	}
 }
 
-func nonceRFC6979(sk *PrivateKey, msg []byte) (*secp256k1.Fn, error) {
+func withHex(s string) NonceFunc {
+	return func() (*secp256k1.Fn, error) {
+		return scalarFromHex(s), nil
+	}
+}
+
+func nonceRFC6979(sk *PrivateKey, msg []byte, extra []byte) (*secp256k1.Fn, error) {
 	skBytes, err := sk.Encode()
 	if err != nil {
 		return nil, err
 	}
 
-	nonce := secp.NonceRFC6979(skBytes, msg, nil, nil, 0)
+	nonce := secp.NonceRFC6979(skBytes, msg, extra, nil, 0)
 
 	if nonce == nil {
 		panic("expected RFC6979 to calculate nonce")
 	}
 
-	var b [32]byte
-	nonce.PutBytes(&b)
+	b := nonce.Bytes()
 	k := &secp256k1.Fn{}
-	k.PutB32(b[:])
+	k.SetB32(b[:])
 
 	return k, nil
 }
