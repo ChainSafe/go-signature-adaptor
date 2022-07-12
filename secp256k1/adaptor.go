@@ -7,40 +7,24 @@ import (
 	"github.com/renproject/secp256k1"
 )
 
-type AdaptorWithSecret struct {
-	secret        *secp256k1.Fn
-	encryptionKey *secp256k1.Point
-	adaptor       *Adaptor
+type EncryptedSignature struct {
+	R, R_a *secp256k1.Point
+	s      *secp256k1.Fn
+	proof  *dleqProof
 }
 
-func (a *AdaptorWithSecret) Adaptor() *Adaptor {
-	return a.adaptor
-}
-
-func (a *AdaptorWithSecret) Secret() *PrivateKey {
-	return &PrivateKey{
-		key: a.secret,
-	}
-}
-
-func (a *AdaptorWithSecret) EncryptionKey() *PublicKey {
-	return &PublicKey{
-		key: a.encryptionKey,
-	}
-}
-
-func (a *AdaptorWithSecret) Decrypt() (*Signature, error) {
+func (a *EncryptedSignature) Decrypt(sk *secp256k1.Fn) (*Signature, error) {
 	y_inv := &secp256k1.Fn{}
-	y_inv.Inverse(a.secret)
+	y_inv.Inverse(sk)
 	s := &secp256k1.Fn{}
-	s.Mul(a.adaptor.s, y_inv)
+	s.Mul(a.s, y_inv)
 
 	// negate s if high
 	if s.IsHigh() {
 		s.Negate(s)
 	}
 
-	r, _, err := a.adaptor.R.XY()
+	r, _, err := a.R.XY()
 	if err != nil {
 		return nil, err
 	}
@@ -51,15 +35,9 @@ func (a *AdaptorWithSecret) Decrypt() (*Signature, error) {
 	}, nil
 }
 
-type Adaptor struct {
-	R, R_a *secp256k1.Point
-	s      *secp256k1.Fn
-	proof  *dleqProof
-}
-
 const encodedAdaptorSize = 33 + 33 + (32 * 3)
 
-func (s *Adaptor) Encode() ([]byte, error) {
+func (s *EncryptedSignature) Encode() ([]byte, error) {
 	var b [encodedAdaptorSize]byte
 	s.R.PutBytes(b[:33])
 	s.R_a.PutBytes(b[33:66])
@@ -69,7 +47,7 @@ func (s *Adaptor) Encode() ([]byte, error) {
 	return b[:], nil
 }
 
-func (s *Adaptor) MarshalJSON() ([]byte, error) {
+func (s *EncryptedSignature) MarshalJSON() ([]byte, error) {
 	b, err := s.Encode()
 	if err != nil {
 		return nil, err
@@ -78,7 +56,7 @@ func (s *Adaptor) MarshalJSON() ([]byte, error) {
 	return json.Marshal(b)
 }
 
-func (s *Adaptor) UnmarshalJSON(in []byte) error {
+func (s *EncryptedSignature) UnmarshalJSON(in []byte) error {
 	var b []byte
 	if err := json.Unmarshal(in, &b); err != nil {
 		return err
@@ -87,7 +65,7 @@ func (s *Adaptor) UnmarshalJSON(in []byte) error {
 	return s.Decode(b)
 }
 
-func (s *Adaptor) Decode(b []byte) error {
+func (s *EncryptedSignature) Decode(b []byte) error {
 	if len(b) != encodedAdaptorSize {
 		return errors.New("input slice has invalid length")
 	}
@@ -122,16 +100,8 @@ func (s *Adaptor) Decode(b []byte) error {
 	return nil
 }
 
-type SignatureWithAdaptor struct {
-	*Signature
-	*AdaptorWithSecret
-}
-
-func (s *SignatureWithAdaptor) Adaptor() *Adaptor {
-	return s.AdaptorWithSecret.adaptor
-}
-
-func (kp *Keypair) AdaptorSign(msg []byte) (*SignatureWithAdaptor, error) {
+func (kp *Keypair) AdaptorSign(msg []byte, pk *secp256k1.Point) (*EncryptedSignature, error) {
+	Y := pk
 	if len(msg) != MessageLength {
 		return nil, errors.New("invalid message length: not 32 byte hash")
 	}
@@ -140,28 +110,7 @@ func (kp *Keypair) AdaptorSign(msg []byte) (*SignatureWithAdaptor, error) {
 	z := &secp256k1.Fn{}
 	_ = z.SetB32(msg) // TODO: check overflow
 
-	adaptor, err := adaptorSign(z, kp.private.key)
-	if err != nil {
-		return nil, err
-	}
-
-	sig, err := adaptor.Decrypt()
-	if err != nil {
-		return nil, err
-	}
-
-	return &SignatureWithAdaptor{
-		AdaptorWithSecret: adaptor,
-		Signature:         sig,
-	}, nil
-}
-
-func adaptorSign(z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
-	// generate encryption secret
-	secret, err := newRandomScalar()
-	if err != nil {
-		return nil, err
-	}
+	x := kp.Private().key
 
 	// generate random scalar
 	k, err := newRandomScalar()
@@ -174,9 +123,7 @@ func adaptorSign(z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 	R_a.BaseExp(k)
 
 	// calculate R and R' inputs for dleqProve
-	// R' = k*Y = k*secret*G
-	Y := &secp256k1.Point{}
-	Y.BaseExp(secret)
+	// R' = k*Y
 	R := &secp256k1.Point{}
 	R.Scale(Y, k)
 
@@ -203,19 +150,15 @@ func adaptorSign(z, x *secp256k1.Fn) (*AdaptorWithSecret, error) {
 		return nil, err
 	}
 
-	return &AdaptorWithSecret{
-		adaptor: &Adaptor{
-			R:     R,
-			R_a:   R_a,
-			s:     s,
-			proof: proof,
-		},
-		secret:        secret,
-		encryptionKey: Y,
+	return &EncryptedSignature{
+		R:     R,
+		R_a:   R_a,
+		s:     s,
+		proof: proof,
 	}, nil
 }
 
-func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, sig *Adaptor) (bool, error) {
+func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor *EncryptedSignature) (bool, error) {
 	if len(msg) != MessageLength {
 		return false, errors.New("invalid message length: not 32 byte hash")
 	}
@@ -227,12 +170,12 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, sig *Ada
 		return false, errors.New("message overflow")
 	}
 
-	r, _, err := sig.R.XY()
+	r, _, err := adaptor.R.XY()
 	if err != nil {
 		return false, err
 	}
 
-	// check sig.proof.R == (z*G + r'*P) * s^(-1)
+	// check adaptor.proof.R == (z*G + r'*P) * s^(-1)
 	zG := &secp256k1.Point{}
 	zG.BaseExp(z)
 	rP := &secp256k1.Point{}
@@ -240,18 +183,18 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, sig *Ada
 	sum := &secp256k1.Point{}
 	sum.Add(zG, rP)
 	sinv := &secp256k1.Fn{}
-	sinv.Inverse(sig.s)
+	sinv.Inverse(adaptor.s)
 	R := &secp256k1.Point{}
 	R.Scale(sum, sinv)
 
-	if !R.Eq(sig.R_a) {
+	if !R.Eq(adaptor.R_a) {
 		return false, nil
 	}
 
-	return dleqVerify(encryptionKey, sig.proof, sig.R_a, sig.R), nil
+	return dleqVerify(encryptionKey, adaptor.proof, adaptor.R_a, adaptor.R), nil
 }
 
-func RecoverFromAdaptorAndSignature(adaptor *Adaptor, encryptionKey *PublicKey, sig *Signature) (*secp256k1.Fn, error) {
+func RecoverFromAdaptorAndSignature(adaptor *EncryptedSignature, encryptionKey *PublicKey, sig *Signature) (*secp256k1.Fn, error) {
 	// check sig.r == x-coordinate of R' = k*Y
 	r, _, err := adaptor.R.XY()
 	if err != nil {
