@@ -3,7 +3,6 @@ package secp256k1
 import (
 	"testing"
 
-	// "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

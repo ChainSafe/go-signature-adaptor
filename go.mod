@@ -15,5 +15,3 @@ require (
 	github.com/renproject/surge v1.2.3 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )
-
-replace github.com/renproject/secp256k1 v0.0.0-20210503051125-8f6a00917811 => ../secp256k1
