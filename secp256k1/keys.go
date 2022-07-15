@@ -1,6 +1,7 @@
 package secp256k1
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 
