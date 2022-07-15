@@ -36,6 +36,10 @@ func (a *AdaptorWithSecret) Decrypt() (*Signature, error) {
 	s.Mul(a.adaptor.s, y_inv)
 
 	// negate s if high
+	if s.IsHigh() {
+		s.Negate(s)
+	}
+
 	r, _, err := a.adaptor.R.XY()
 	if err != nil {
 		return nil, err

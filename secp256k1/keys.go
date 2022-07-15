@@ -1,6 +1,7 @@
 package secp256k1
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 
@@ -168,6 +169,26 @@ func GenerateKeypair() *Keypair {
 	}
 }
 
+func KeypairFromHex(s string) *Keypair {
+	data, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	priv := secp256k1.Fn{}
+	priv.SetB32SecKey(data)
+	pub := secp256k1.NewPointInfinity()
+	pub.BaseExp(&priv)
+
+	return &Keypair{
+		public: &PublicKey{
+			key: &pub,
+		},
+		private: &PrivateKey{
+			key: &priv,
+		},
+	}
+}
+
 // Sign ...
 func (kp *Keypair) Sign(msg []byte) (*Signature, error) {
 	if len(msg) != MessageLength {
@@ -217,7 +238,7 @@ func sign(z, x *secp256k1.Fn) (*Signature, error) {
 	return &Signature{
 		r: &r_fp,
 		s: s,
-		v: 0, //TODO
+		v: 0, // TODO
 	}, nil
 }
 
