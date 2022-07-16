@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1
 	github.com/ethereum/go-ethereum v1.10.16
-	github.com/renproject/secp256k1 v0.0.0-20210503051125-8f6a00917811
+	github.com/renproject/secp256k1 v0.0.0-20220707021023-f849b5f8a3c6
 	github.com/stretchr/testify v1.7.0
 )
 
