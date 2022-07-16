@@ -94,10 +94,18 @@ func (s *Adaptor) Decode(b []byte) error {
 
 	// parse adaptor
 	R := &secp256k1.Point{}
-	R.SetBytes(b[:33])
+	err := R.SetBytes(b[:33])
+	if err != nil {
+		return err
+	}
+
 	b = b[33:]
 	R_a := &secp256k1.Point{}
-	R_a.SetBytes(b[:33])
+	err = R_a.SetBytes(b[:33])
+	if err != nil {
+		return err
+	}
+
 	b = b[33:]
 	s_a := &secp256k1.Fn{}
 	s_a.SetB32(b[:32])
