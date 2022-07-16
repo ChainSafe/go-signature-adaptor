@@ -88,8 +88,7 @@ func (k *PublicKey) EncodeDecompressed() ([]byte, error) {
 
 func (k *PublicKey) Decode(b []byte) error {
 	k.key = &secp256k1.Point{}
-	k.key.SetBytes(b)
-	return nil
+	return k.key.SetBytes(b)
 }
 
 func (k *PublicKey) MarshalJSON() ([]byte, error) {
