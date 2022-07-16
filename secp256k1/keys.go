@@ -1,7 +1,6 @@
 package secp256k1
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 
@@ -169,21 +168,16 @@ func GenerateKeypair() *Keypair {
 }
 
 func KeypairFromHex(s string) *Keypair {
-	data, err := hex.DecodeString(s)
-	if err != nil {
-		panic(err)
-	}
-	priv := secp256k1.Fn{}
-	priv.SetB32SecKey(data)
+	priv := scalarFromHex(s)
 	pub := secp256k1.NewPointInfinity()
-	pub.BaseExp(&priv)
+	pub.BaseExp(priv)
 
 	return &Keypair{
 		public: &PublicKey{
 			key: &pub,
 		},
 		private: &PrivateKey{
-			key: &priv,
+			key: priv,
 		},
 	}
 }

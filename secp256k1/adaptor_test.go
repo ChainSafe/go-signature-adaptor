@@ -10,35 +10,37 @@ import (
 )
 
 func TestAdaptor_SignAndVerify(t *testing.T) {
-	kp := GenerateKeypair()
+	alice := GenerateKeypair()
+	oneTime := GenerateKeypair()
 
 	msg := [32]byte{1, 2, 3}
-	sig, err := kp.AdaptorSign(msg[:])
+	adaptor, err := alice.AdaptorSign(msg[:], oneTime.public.key)
 	require.NoError(t, err)
 
-	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.EncryptionKey(),
-		sig.AdaptorWithSecret.adaptor)
+	ok, err := alice.Public().VerifyAdaptor(msg[:], oneTime.public, adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
 }
 
 func TestRecoverFromAdaptorAndSignature(t *testing.T) {
-	kp := GenerateKeypair()
+	alice := GenerateKeypair()
+	oneTime := GenerateKeypair()
 
 	msg := [32]byte{1, 2, 3}
-	sig, err := kp.AdaptorSign(msg[:])
+	adaptor, err := alice.AdaptorSign(msg[:], oneTime.public.key)
 	require.NoError(t, err)
 
-	ok, err := kp.Public().VerifyAdaptor(msg[:], sig.AdaptorWithSecret.EncryptionKey(),
-		sig.AdaptorWithSecret.adaptor)
+	ok, err := alice.Public().VerifyAdaptor(msg[:], oneTime.public, adaptor)
 	require.NoError(t, err)
 	require.True(t, ok)
 
-	// TODO: fix this, doesn't work with signatures we generated
-	secret, err := RecoverFromAdaptorAndSignature(sig.AdaptorWithSecret.adaptor, sig.AdaptorWithSecret.EncryptionKey(),
-		sig.Signature)
+	sig, err := adaptor.Decrypt(oneTime.private.key)
 	require.NoError(t, err)
-	require.True(t, secret.Eq(sig.AdaptorWithSecret.secret))
+
+	// TODO: fix this, doesn't work with signatures we generated
+	secret, err := RecoverFromAdaptorAndSignature(adaptor, oneTime.public, sig)
+	require.NoError(t, err)
+	require.True(t, secret.Eq(oneTime.private.key))
 }
 
 func TestAdaptor_ValidPlain(t *testing.T) {
@@ -72,7 +74,7 @@ func TestAdaptor_ValidPlain(t *testing.T) {
 	require.True(t, ok)
 
 	// verify adaptor signature
-	adaptor := &Adaptor{}
+	adaptor := &EncryptedSignature{}
 	err = adaptor.Decode(adaptorStr)
 	require.NoError(t, err)
 
@@ -98,14 +100,14 @@ func TestAdaptor_Encode(t *testing.T) {
 	adaptorStr, err := hex.DecodeString("03424d14a5471c048ab87b3b83f6085d125d5864249ae4297a57c84e74710bb6730223f325042fce535d040fee52ec13231bf709ccd84233c6944b90317e62528b2527dff9d659a96db4c99f9750168308633c1867b70f3a18fb0f4539a1aecedcd1fc0148fc22f36b6303083ece3f872b18e35d368b3958efe5fb081f7716736ccb598d269aa3084d57e1855e1ea9a45efc10463bbf32ae378029f5763ceb40173f")
 	require.NoError(t, err)
 
-	adaptor := &Adaptor{}
+	adaptor := &EncryptedSignature{}
 	err = adaptor.Decode(adaptorStr)
 	require.NoError(t, err)
 
 	res, err := adaptor.Encode()
 	require.NoError(t, err)
 
-	adaptor2 := &Adaptor{}
+	adaptor2 := &EncryptedSignature{}
 	err = adaptor2.Decode(res)
 	require.NoError(t, err)
 	require.Equal(t, adaptor, adaptor2)
