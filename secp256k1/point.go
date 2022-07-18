@@ -2,12 +2,10 @@ package secp256k1
 
 import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	old "github.com/renproject/secp256k1"
 )
 
 type Point struct {
 	*secp256k1.JacobianPoint
-	to_remove *old.Point
 }
 
 func (p *Point) SetBytes(bc []byte) error {
@@ -40,17 +38,21 @@ func (p *Point) XY() (*secp256k1.FieldVal, *secp256k1.FieldVal, error) {
 }
 
 func (p *Point) BaseExp(k *secp256k1.ModNScalar) {
-	p.JacobianPoint = &secp256k1.JacobianPoint{}
+	p.newInnerIfNil()
 	secp256k1.ScalarBaseMultNonConst(k, p.JacobianPoint)
+	p.JacobianPoint.ToAffine()
 }
 
 func (p *Point) Scale(point *Point, k *secp256k1.ModNScalar) {
-	p.JacobianPoint = &secp256k1.JacobianPoint{}
+	p.newInnerIfNil()
 	secp256k1.ScalarMultNonConst(k, point.JacobianPoint, p.JacobianPoint)
+	p.JacobianPoint.ToAffine()
 }
 
 func (p *Point) Add(a, b *Point) {
+	p.newInnerIfNil()
 	secp256k1.AddNonConst(a.JacobianPoint, b.JacobianPoint, p.JacobianPoint)
+	p.JacobianPoint.ToAffine()
 }
 
 func (p *Point) Sub(a, b *Point) {
@@ -76,6 +78,11 @@ func (p *Point) Copy() *Point {
 	p2.Set(p.JacobianPoint)
 	return &Point{
 		JacobianPoint: p2,
-		to_remove:     nil,
+	}
+}
+
+func (p *Point) newInnerIfNil() {
+	if p.JacobianPoint == nil {
+		p.JacobianPoint = new(secp256k1.JacobianPoint)
 	}
 }

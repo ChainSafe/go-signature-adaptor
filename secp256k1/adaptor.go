@@ -143,7 +143,9 @@ func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFun
 	r := fpToFn(&r_fp)
 
 	// s' = (z + r'*x) * k^(-1)
-	s := z.Add(r.Mul(x)).Mul(k.InverseNonConst())
+	kinv := new(secp256k1.ModNScalar)
+	kinv.InverseValNonConst(k)
+	s := r.Mul(x).Add(z).Mul(kinv)
 
 	proof, err := dleqProve(k, R_a, R, Y)
 	if err != nil {
@@ -159,10 +161,6 @@ func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFun
 }
 
 func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor *EncryptedSignature) (bool, error) {
-	if len(msg) != MessageLength {
-		return false, errors.New("invalid message length: not 32 byte hash")
-	}
-
 	// hash of message
 	z := &secp256k1.ModNScalar{}
 	if z.SetByteSlice(msg) {

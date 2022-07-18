@@ -209,7 +209,7 @@ func sign(z, x *secp256k1.ModNScalar) (*Signature, error) {
 		return nil, err
 	}
 
-	kinv := &secp256k1.ModNScalar{}
+	kinv := new(secp256k1.ModNScalar)
 	kinv.InverseValNonConst(k)
 
 	// R = k*G
@@ -225,7 +225,7 @@ func sign(z, x *secp256k1.ModNScalar) (*Signature, error) {
 	r := fpToFn(r_fp)
 
 	// s = (z + r*x) * k^(-1)
-	s := r.Mul(x).Add(z).Add(kinv)
+	s := r.Mul(x).Add(z).Mul(kinv)
 
 	return &Signature{
 		r: r_fp,

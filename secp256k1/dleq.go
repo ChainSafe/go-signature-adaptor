@@ -38,7 +38,6 @@ func dleqProve(w *secp256k1.ModNScalar, R_a, R, Y *Point) (*dleqProof, error) {
 	Q_p.Scale(Y, k)
 
 	z := hashToScalar(R_a, Y, R, Q, Q_p)
-
 	s := w.Mul(z).Add(k)
 
 	return &dleqProof{
