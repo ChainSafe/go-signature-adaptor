@@ -32,12 +32,6 @@ func WithRandom() NonceFunc {
 	}
 }
 
-func withHex(s string) NonceFunc {
-	return func() (*secp256k1.ModNScalar, error) {
-		return scalarFromHex(s), nil
-	}
-}
-
 func nonceRFC6979(sk *PrivateKey, msg []byte, extra []byte) (*secp256k1.ModNScalar, error) {
 	skBytes, err := sk.Encode()
 	if err != nil {

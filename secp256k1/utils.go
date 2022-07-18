@@ -44,19 +44,3 @@ func scalarFromHex(s string) *secp256k1.ModNScalar {
 
 	return fn
 }
-
-func scalarToHex(fn *secp256k1.ModNScalar) string {
-	var b [32]byte
-	fn.PutBytes(&b)
-	return hex.EncodeToString(b[:])
-}
-
-func baseFieldToHex(fn *secp256k1.FieldVal) string {
-	var b [32]byte
-	fn.PutBytes(&b)
-	return hex.EncodeToString(b[:])
-}
-
-func pointToHex(p *Point) string {
-	return hex.EncodeToString(p.ToBytes())
-}
