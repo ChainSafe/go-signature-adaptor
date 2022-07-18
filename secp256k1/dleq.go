@@ -3,7 +3,7 @@ package secp256k1
 import (
 	"crypto/sha256"
 
-	"github.com/renproject/secp256k1"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 var (
@@ -13,7 +13,7 @@ var (
 )
 
 type dleqProof struct {
-	z, s *secp256k1.Fn
+	z, s *secp256k1.ModNScalar
 }
 
 // w := witness
@@ -25,24 +25,21 @@ type dleqProof struct {
 // z := hash( R || R' || Q || Q')
 // s := k + w*z
 // proof := (R, R', z, s)
-func dleqProve(w *secp256k1.Fn, R_a, R, Y *secp256k1.Point) (*dleqProof, error) {
+func dleqProve(w *secp256k1.ModNScalar, R_a, R, Y *Point) (*dleqProof, error) {
 	k, err := newRandomScalar()
 	if err != nil {
 		return nil, err
 	}
 
-	Q := &secp256k1.Point{}
+	Q := new(Point)
 	Q.BaseExp(k)
 
-	Q_p := &secp256k1.Point{}
+	Q_p := new(Point)
 	Q_p.Scale(Y, k)
 
 	z := hashToScalar(R_a, Y, R, Q, Q_p)
 
-	wz := &secp256k1.Fn{}
-	wz.Mul(w, z)
-	s := &secp256k1.Fn{}
-	s.Add(k, wz)
+	s := w.Mul(z).Add(k)
 
 	return &dleqProof{
 		z: z,
@@ -50,28 +47,30 @@ func dleqProve(w *secp256k1.Fn, R_a, R, Y *secp256k1.Point) (*dleqProof, error) 
 	}, nil
 }
 
-func dleqVerify(encryptionKey *PublicKey, proof *dleqProof, R, R_p *secp256k1.Point) bool {
+func dleqVerify(encryptionKey *PublicKey, proof *dleqProof, R, R_p *Point) bool {
 	// Q = s*G - z*R
 	// Q' = s*Y - z*R'
 	// check z == H( R || Y ||  R' || Q || Q' )
 
-	sG := &secp256k1.Point{}
+	sG := new(Point)
 	sG.BaseExp(proof.s)
-	zR := &secp256k1.Point{}
+	zR := new(Point)
 	zR.Scale(R, proof.z)
-	Q := pointSub(sG, zR)
+	Q := new(Point)
+	Q.Sub(sG, zR)
 
-	sY := &secp256k1.Point{}
+	sY := new(Point)
 	sY.Scale(encryptionKey.key, proof.s)
-	zRp := &secp256k1.Point{}
+	zRp := new(Point)
 	zRp.Scale(R_p, proof.z)
-	Q_p := pointSub(sY, zRp)
+	Q_p := new(Point)
+	Q_p.Sub(sY, zRp)
 
 	h := hashToScalar(R, encryptionKey.key, R_p, Q, Q_p)
-	return h.Eq(proof.z)
+	return h.Equals(proof.z)
 }
 
-func hashToScalar(R, Y, R_p, Q, Q_p *secp256k1.Point) *secp256k1.Fn {
+func hashToScalar(R, Y, R_p, Q, Q_p *Point) *secp256k1.ModNScalar {
 	var rb, rpb, yb, qb, qpb [33]byte
 	R.PutBytes(rb[:])
 	Y.PutBytes(yb[:])
@@ -85,7 +84,7 @@ func hashToScalar(R, Y, R_p, Q, Q_p *secp256k1.Point) *secp256k1.Fn {
 	b = append(b, qpb[:]...)
 	h := sha256.Sum256(append(tag, b...))
 
-	fn := &secp256k1.Fn{}
-	fn.SetB32(h[:])
+	fn := &secp256k1.ModNScalar{}
+	fn.SetBytes(&h)
 	return fn
 }

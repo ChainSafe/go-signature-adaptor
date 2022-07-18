@@ -3,62 +3,44 @@ package secp256k1
 import (
 	"encoding/hex"
 
-	"github.com/renproject/secp256k1"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
-func newRandomScalar() (*secp256k1.Fn, error) {
+func newRandomScalar() (*secp256k1.ModNScalar, error) {
 	for {
-		// generate random scalar
-		k, err := secp256k1.RandomFnNoPanic()
+		// probably not the most efficient way to generate scalar
+		sk, err := secp256k1.GeneratePrivateKey()
 		if err != nil {
 			return nil, err
 		}
 
-		if !k.IsZero() {
-			return &k, nil
+		if !sk.Key.IsZero() {
+			return &sk.Key, nil
 		}
 	}
 }
 
-func fpToFn(fp *secp256k1.Fp) *secp256k1.Fn {
+func fpToFn(fp *secp256k1.FieldVal) *secp256k1.ModNScalar {
 	var b [32]byte
-	fp.PutB32(b[:])
-	fn := &secp256k1.Fn{}
-	overflow := fn.SetB32(b[:])
-	if overflow {
+	fp.PutBytes(&b)
+	fn := &secp256k1.ModNScalar{}
+	overflow := fn.SetBytes(&b)
+	if overflow == 1 {
 		panic("got overflow converting from fp to fn")
 	}
 	return fn
 }
 
-func pointSub(a, b *secp256k1.Point) *secp256k1.Point {
-	bNeg := negatePoint(b)
-	ret := &secp256k1.Point{}
-	ret.Add(a, bNeg)
-	return ret
-}
-
-func negatePoint(p *secp256k1.Point) *secp256k1.Point {
-	one := secp256k1.NewFnFromU16(1)
-	if !one.IsOne() {
-		panic("one is not one")
-	}
-
-	negOne := &secp256k1.Fn{}
-	negOne.Negate(&one)
-
-	pNeg := &secp256k1.Point{}
-	pNeg.Scale(p, negOne)
-	return pNeg
-}
-
-func scalarFromHex(s string) *secp256k1.Fn {
+func scalarFromHex(s string) *secp256k1.ModNScalar {
 	bytes, err := hex.DecodeString(s)
 	if err != nil {
 		panic(err)
 	}
-	f := secp256k1.Fn{}
-	f.SetB32SecKey(bytes)
 
-	return &f
+	fn := new(secp256k1.ModNScalar)
+	if fn.SetByteSlice(bytes) {
+		panic("overflow decoding scalar from hex")
+	}
+
+	return fn
 }

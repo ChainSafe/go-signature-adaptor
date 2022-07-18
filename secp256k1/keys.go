@@ -3,8 +3,9 @@ package secp256k1
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
-	"github.com/renproject/secp256k1"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 const MessageLength = 32
@@ -16,11 +17,11 @@ type Keypair struct {
 
 // PrivateKey ...
 type PrivateKey struct {
-	key *secp256k1.Fn
+	key *secp256k1.ModNScalar
 }
 
 func (k *PrivateKey) Public() *PublicKey {
-	pub := &secp256k1.Point{}
+	pub := &Point{}
 	pub.BaseExp(k.key)
 	return &PublicKey{
 		key: pub,
@@ -29,13 +30,15 @@ func (k *PrivateKey) Public() *PublicKey {
 
 func (k *PrivateKey) Encode() ([]byte, error) {
 	var b [32]byte
-	k.key.PutB32(b[:])
+	k.key.PutBytes(&b)
 	return b[:], nil
 }
 
 func (k *PrivateKey) Decode(b []byte) error {
-	k.key = &secp256k1.Fn{}
-	k.key.SetB32(b)
+	k.key = new(secp256k1.ModNScalar)
+	if k.key.SetByteSlice(b) {
+		return fmt.Errorf("overflow decoding key: not 32 bytes")
+	}
 	return nil
 }
 
@@ -59,7 +62,7 @@ func (k *PrivateKey) UnmarshalJSON(in []byte) error {
 
 // PublicKey ...
 type PublicKey struct {
-	key *secp256k1.Point
+	key *Point
 }
 
 func (k *PublicKey) Encode() ([]byte, error) {
@@ -80,13 +83,13 @@ func (k *PublicKey) EncodeDecompressed() ([]byte, error) {
 		return nil, err
 	}
 
-	x.SetB32(b[:32])
-	y.SetB32(b[32:])
+	x.SetByteSlice(b[:32])
+	y.SetByteSlice(b[32:])
 	return b[:], nil
 }
 
 func (k *PublicKey) Decode(b []byte) error {
-	k.key = &secp256k1.Point{}
+	k.key = new(Point)
 	return k.key.SetBytes(b)
 }
 
@@ -110,14 +113,14 @@ func (k *PublicKey) UnmarshalJSON(in []byte) error {
 
 type Signature struct {
 	v byte
-	r *secp256k1.Fp
-	s *secp256k1.Fn
+	r *secp256k1.FieldVal
+	s *secp256k1.ModNScalar
 }
 
 func (s *Signature) Encode() ([]byte, error) {
 	var b [64]byte
-	s.r.PutB32(b[:32])
-	s.s.PutB32(b[32:])
+	s.r.PutBytesUnchecked(b[:32])
+	s.s.PutBytesUnchecked(b[32:])
 	return b[:], nil
 }
 
@@ -126,11 +129,11 @@ func (s *Signature) Decode(b []byte) error {
 		return errors.New("signature encoding must be 64/65 bytes")
 	}
 	// TODO: decode v
-	s.r = &secp256k1.Fp{}
-	s.r.SetB32(b[:32])
+	s.r = new(secp256k1.FieldVal)
+	s.r.SetByteSlice(b[:32])
 	b = b[32:]
-	s.s = &secp256k1.Fn{}
-	s.s.SetB32(b[:32])
+	s.s = new(secp256k1.ModNScalar)
+	s.s.SetByteSlice(b[:32])
 	return nil
 }
 
@@ -153,28 +156,31 @@ func (s *Signature) UnmarshalJSON(in []byte) error {
 }
 
 func GenerateKeypair() *Keypair {
-	priv := secp256k1.RandomFn()
-	pub := secp256k1.NewPointInfinity()
-	pub.BaseExp(&priv)
+	for {
+		if priv, err := secp256k1.GeneratePrivateKey(); err == nil {
+			pub := new(Point)
+			pub.BaseExp(&priv.Key)
 
-	return &Keypair{
-		public: &PublicKey{
-			key: &pub,
-		},
-		private: &PrivateKey{
-			key: &priv,
-		},
+			return &Keypair{
+				public: &PublicKey{
+					key: pub,
+				},
+				private: &PrivateKey{
+					key: &priv.Key,
+				},
+			}
+		}
 	}
 }
 
 func KeypairFromHex(s string) *Keypair {
 	priv := scalarFromHex(s)
-	pub := secp256k1.NewPointInfinity()
+	pub := new(Point)
 	pub.BaseExp(priv)
 
 	return &Keypair{
 		public: &PublicKey{
-			key: &pub,
+			key: pub,
 		},
 		private: &PrivateKey{
 			key: priv,
@@ -184,13 +190,11 @@ func KeypairFromHex(s string) *Keypair {
 
 // Sign ...
 func (kp *Keypair) Sign(msg []byte) (*Signature, error) {
-	if len(msg) != MessageLength {
-		return nil, errors.New("invalid message length: not 32 byte hash")
-	}
-
 	// hash of message
-	z := &secp256k1.Fn{}
-	_ = z.SetB32(msg) // TODO: check overflow
+	z := new(secp256k1.ModNScalar)
+	if z.SetByteSlice(msg) {
+		return nil, fmt.Errorf("invalid message length: not 32 byte hash")
+	}
 
 	return sign(z, kp.private.key)
 }
@@ -198,18 +202,18 @@ func (kp *Keypair) Sign(msg []byte) (*Signature, error) {
 // k := random value
 // z := hash(message)
 // x := private key
-func sign(z, x *secp256k1.Fn) (*Signature, error) {
+func sign(z, x *secp256k1.ModNScalar) (*Signature, error) {
 	// generate random scalar
 	k, err := newRandomScalar()
 	if err != nil {
 		return nil, err
 	}
 
-	kinv := &secp256k1.Fn{}
-	kinv.Inverse(k)
+	kinv := &secp256k1.ModNScalar{}
+	kinv.InverseValNonConst(k)
 
 	// R = k*G
-	R := &secp256k1.Point{}
+	R := new(Point)
 	R.BaseExp(k)
 
 	// r == x-coord of R
@@ -218,18 +222,13 @@ func sign(z, x *secp256k1.Fn) (*Signature, error) {
 		return nil, err
 	}
 
-	r := fpToFn(&r_fp)
+	r := fpToFn(r_fp)
 
 	// s = (z + r*x) * k^(-1)
-	rx := &secp256k1.Fn{}
-	rx.Mul(r, x)
-	sum := &secp256k1.Fn{}
-	sum.Add(z, rx)
-	s := &secp256k1.Fn{}
-	s.Mul(sum, kinv)
+	s := r.Mul(x).Add(z).Add(kinv)
 
 	return &Signature{
-		r: &r_fp,
+		r: r_fp,
 		s: s,
 		v: 0, // TODO
 	}, nil
@@ -252,21 +251,23 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	}
 
 	// hash of message
-	z := &secp256k1.Fn{}
-	_ = z.SetB32(msg)
+	z := new(secp256k1.ModNScalar)
+	if z.SetByteSlice(msg) {
+		return false, fmt.Errorf("invalid message length: not 32 byte hash")
+	}
 
 	// R = (r*P + z*G) * s^(-1)
-	rP := &secp256k1.Point{}
+	rP := new(Point)
 	rP.Scale(k.key, fpToFn(sig.r))
 
-	sinv := &secp256k1.Fn{}
-	sinv.Inverse(sig.s)
+	sinv := new(secp256k1.ModNScalar)
+	sinv.InverseValNonConst(sig.s)
 
-	zG := &secp256k1.Point{}
+	zG := new(Point)
 	zG.BaseExp(z)
-	sum := &secp256k1.Point{}
+	sum := new(Point)
 	sum.Add(rP, zG)
-	R := &secp256k1.Point{}
+	R := new(Point)
 	R.Scale(sum, sinv)
 
 	rx, _, err := R.XY()
@@ -274,19 +275,17 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 		return false, err
 	}
 
-	return rx.Eq(sig.r), nil
+	return rx.Equals(sig.r), nil
 }
 
 func MulPrivateKeys(a, b *PrivateKey) *PrivateKey {
-	res := &secp256k1.Fn{}
-	res.Mul(a.key, b.key)
 	return &PrivateKey{
-		key: res,
+		key: a.key.Mul(b.key),
 	}
 }
 
 func MulPublicKeyAndSecret(pub *PublicKey, secret *PrivateKey) *PublicKey {
-	res := &secp256k1.Point{}
+	res := new(Point)
 	res.Scale(pub.key, secret.key)
 	return &PublicKey{
 		key: res,
