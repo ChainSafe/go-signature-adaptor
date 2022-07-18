@@ -27,9 +27,7 @@ func (p *Point) ToBytes() []byte {
 func (p *Point) PutBytes(dst []byte) {
 	bs := secp256k1.NewPublicKey(&p.X, &p.Y).
 		SerializeCompressed()
-	for i := range bs {
-		dst[i] = bs[i]
-	}
+	copy(dst, bs)
 }
 
 func (p *Point) XY() (*secp256k1.FieldVal, *secp256k1.FieldVal, error) {
