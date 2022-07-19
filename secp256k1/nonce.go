@@ -4,8 +4,12 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
+// NonceFunc defines nonce generation algorithm.
 type NonceFunc = func() (*secp256k1.ModNScalar, error)
 
+// WithRFC6979 can be used to specify deterministic nonce generation based on the RFC-6979 spec.
+//
+// This is the default way of generation nonce in this library.
 func WithRFC6979(sk *PrivateKey, msg []byte, encKey *PublicKey) NonceFunc {
 	return func() (*secp256k1.ModNScalar, error) {
 		if encKey != nil {
@@ -21,6 +25,7 @@ func WithRFC6979(sk *PrivateKey, msg []byte, encKey *PublicKey) NonceFunc {
 	}
 }
 
+// WithRandom can be used to specify random nonce generation.
 func WithRandom() NonceFunc {
 	return func() (*secp256k1.ModNScalar, error) {
 		k, err := newRandomScalar()

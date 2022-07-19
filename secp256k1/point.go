@@ -6,6 +6,8 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
+// Point is the library's internal elliptic curve point representation
+// and is a wrapper around `secp256k1.JacobianPoint` https://github.com/decred/dcrd/tree/master/dcrec/secp256k1.
 type Point struct {
 	*secp256k1.JacobianPoint
 }

@@ -8,107 +8,9 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
-type EncryptedSignature struct {
-	R, R_a *Point
-	s      *secp256k1.ModNScalar
-	proof  *dleqProof
-}
-
-func (a *EncryptedSignature) Decrypt(sk *secp256k1.ModNScalar) (*Signature, error) {
-	y_inv := &secp256k1.ModNScalar{}
-	y_inv.InverseValNonConst(sk)
-	s := new(secp256k1.ModNScalar)
-	s.Mul2(a.s, y_inv)
-
-	is_s_high := byte(0)
-	if s.IsOverHalfOrder() {
-		is_s_high = 1
-	}
-
-	// negate s if high
-	if s.IsOverHalfOrder() {
-		s.Negate()
-	}
-
-	r := a.R.X
-	is_r_odd := byte(a.R.Y.IsOddBit())
-
-	return &Signature{
-		r: &r,
-		s: s,
-		v: is_r_odd ^ is_s_high,
-	}, nil
-}
-
-const encodedAdaptorSize = 33 + 33 + (32 * 3)
-
-func (s *EncryptedSignature) Encode() ([]byte, error) {
-	var b [encodedAdaptorSize]byte
-	s.R.PutBytes(b[:33])
-	s.R_a.PutBytes(b[33:66])
-	s.s.SetByteSlice(b[66:98])
-	s.proof.z.PutBytesUnchecked(b[98 : 98+32])
-	s.proof.s.PutBytesUnchecked(b[98+32:])
-	return b[:], nil
-}
-
-func (s *EncryptedSignature) MarshalJSON() ([]byte, error) {
-	b, err := s.Encode()
-	if err != nil {
-		return nil, err
-	}
-
-	return json.Marshal(b)
-}
-
-func (s *EncryptedSignature) UnmarshalJSON(in []byte) error {
-	var b []byte
-	if err := json.Unmarshal(in, &b); err != nil {
-		return err
-	}
-
-	return s.Decode(b)
-}
-
-func (s *EncryptedSignature) Decode(b []byte) error {
-	if len(b) != encodedAdaptorSize {
-		return errors.New("input slice has invalid length")
-	}
-
-	// parse adaptor
-	R := new(Point)
-	if err := R.SetBytes(b[:33]); err != nil {
-		return err
-	}
-	b = b[33:]
-	R_a := new(Point)
-	if err := R_a.SetBytes(b[:33]); err != nil {
-		return err
-	}
-	b = b[33:]
-	s_a := new(secp256k1.ModNScalar)
-	s_a.SetByteSlice(b[:32])
-	b = b[32:]
-
-	// parse proof
-	z := new(secp256k1.ModNScalar)
-	z.SetByteSlice((b[:32]))
-	b = b[32:]
-	s_p := new(secp256k1.ModNScalar)
-	s_p.SetByteSlice(b[:32])
-
-	s.s = s_a
-	s.R_a = R_a
-	s.R = R
-
-	s.proof = &dleqProof{
-		z: z,
-		s: s_p,
-	}
-
-	return nil
-}
-
+// AdaptorSign create an encrypted signature aka "adaptor signature" aka "pre-signature".
+//
+// The `msg` param is a 32 bytes hash. Use `nonceFnOpt` to specify custom NonceFunc. Default is WithRFC6979.
 func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
 	Y := encKey
 
@@ -167,6 +69,8 @@ func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFun
 	}, nil
 }
 
+// VerifyAdaptor verifies an encrypted signature is valid
+// i.e. if it is decrypted it will yield a signature on `msg` under receiver PublicKey.
 func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor *EncryptedSignature) (bool, error) {
 	// hash of message
 	z := &secp256k1.ModNScalar{}
@@ -195,6 +99,120 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor 
 	return dleqVerify(encryptionKey, adaptor.proof, adaptor.R_a, adaptor.R), nil
 }
 
+// EncryptedSignature is an "encrypted" ECDSA signature aka adaptor signature (R || R_a || s || dleqProof).
+type EncryptedSignature struct {
+	R, R_a *Point
+	s      *secp256k1.ModNScalar
+	proof  *dleqProof
+}
+
+// Decrypt function is used to decrypt an encrypted signature yielding the plain ECDSA signature.
+//
+// * Before calling this method you should be certain that the EncryptedSignature is what you think it is
+// by calling PublicKey.VerifyAdaptor on it first.
+//
+// * Once you give the decrypted Signature to anyone who has seen EncryptedSignature,
+// they will be able to learn decryption key aka secret by calling RecoverFromAdaptorAndSignature.
+func (a *EncryptedSignature) Decrypt(sk *secp256k1.ModNScalar) (*Signature, error) {
+	y_inv := &secp256k1.ModNScalar{}
+	y_inv.InverseValNonConst(sk)
+	s := new(secp256k1.ModNScalar)
+	s.Mul2(a.s, y_inv)
+
+	is_s_high := byte(0)
+	if s.IsOverHalfOrder() {
+		is_s_high = 1
+	}
+
+	// negate s if high
+	if s.IsOverHalfOrder() {
+		s.Negate()
+	}
+
+	r := a.R.X
+	is_r_odd := byte(a.R.Y.IsOddBit())
+
+	return &Signature{
+		r: &r,
+		s: s,
+		v: is_r_odd ^ is_s_high,
+	}, nil
+}
+
+const EncodedAdaptorSize = 33 + 33 + (32 * 3)
+
+// Encode encodes EncryptedSignature into EncodedAdaptorSize bytes buffer as follows (R || R_a || s || proof.z | proof.s).
+func (s *EncryptedSignature) Encode() ([]byte, error) {
+	var b [EncodedAdaptorSize]byte
+	s.R.PutBytes(b[:33])
+	s.R_a.PutBytes(b[33:66])
+	s.s.SetByteSlice(b[66:98])
+	s.proof.z.PutBytesUnchecked(b[98 : 98+32])
+	s.proof.s.PutBytesUnchecked(b[98+32:])
+	return b[:], nil
+}
+
+// MarshalJSON serializes EncryptedSignature into JSON format based on the Encode method.
+func (s *EncryptedSignature) MarshalJSON() ([]byte, error) {
+	b, err := s.Encode()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(b)
+}
+
+// UnmarshalJSON deserializes EncryptedSignature from JSON formatted bytes based on the Decode method.
+func (s *EncryptedSignature) UnmarshalJSON(in []byte) error {
+	var b []byte
+	if err := json.Unmarshal(in, &b); err != nil {
+		return err
+	}
+
+	return s.Decode(b)
+}
+
+// Decode parses bytes buffer `b` into EncryptedSignature.
+func (s *EncryptedSignature) Decode(b []byte) error {
+	if len(b) != EncodedAdaptorSize {
+		return errors.New("input slice has invalid length")
+	}
+
+	// parse adaptor
+	R := new(Point)
+	if err := R.SetBytes(b[:33]); err != nil {
+		return err
+	}
+	b = b[33:]
+	R_a := new(Point)
+	if err := R_a.SetBytes(b[:33]); err != nil {
+		return err
+	}
+	b = b[33:]
+	s_a := new(secp256k1.ModNScalar)
+	s_a.SetByteSlice(b[:32])
+	b = b[32:]
+
+	// parse proof
+	z := new(secp256k1.ModNScalar)
+	z.SetByteSlice((b[:32]))
+	b = b[32:]
+	s_p := new(secp256k1.ModNScalar)
+	s_p.SetByteSlice(b[:32])
+
+	s.s = s_a
+	s.R_a = R_a
+	s.R = R
+
+	s.proof = &dleqProof{
+		z: z,
+		s: s_p,
+	}
+
+	return nil
+}
+
+// RecoverFromAdaptorAndSignature recovers the decryption key given an encrypted signature and the signature that was decrypted from it.
 func RecoverFromAdaptorAndSignature(adaptor *EncryptedSignature, encryptionKey *PublicKey, sig *Signature) (*secp256k1.ModNScalar, error) {
 	// check sig.r == x-coordinate of R' = k*Y
 	r, _, err := adaptor.R.XY()
