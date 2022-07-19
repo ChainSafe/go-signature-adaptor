@@ -1,6 +1,8 @@
 package secp256k1
 
 import (
+	"fmt"
+
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
@@ -31,7 +33,9 @@ func (p *Point) PutBytes(dst []byte) {
 }
 
 func (p *Point) XY() (*secp256k1.FieldVal, *secp256k1.FieldVal, error) {
-	// todo ensure not infinity
+	if p.X.IsZero() && p.Y.IsZero() {
+		return nil, nil, fmt.Errorf("point at infinity does not have valid coordinates")
+	}
 	return &p.X, &p.Y, nil
 }
 
