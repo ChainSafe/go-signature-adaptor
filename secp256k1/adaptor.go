@@ -8,97 +8,6 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
-// AdaptorSign create an encrypted signature aka "adaptor signature" aka "pre-signature".
-//
-// The `msg` param is a 32 bytes hash. Use `nonceFnOpt` to specify custom NonceFunc. Default is WithRFC6979.
-func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
-	Y := encKey
-
-	// hash of message
-	z := new(secp256k1.ModNScalar)
-	if z.SetByteSlice(msg) {
-		return nil, fmt.Errorf("invalid message length: not 32 byte hash")
-	}
-
-	x := kp.Private().key
-
-	// choose nonce gen function
-	nonceFn := WithRFC6979(kp.Private(), msg, &PublicKey{key: encKey})
-	if len(nonceFnOpt) > 0 {
-		nonceFn = nonceFnOpt[0]
-	}
-
-	// generate nonce
-	k, err := nonceFn()
-	if err != nil {
-		return nil, err
-	}
-
-	// R_a = k*G
-	R_a := new(Point)
-	R_a.BaseExp(k)
-
-	// calculate R and R' inputs for dleqProve
-	// R' = k*Y
-	R := new(Point)
-	R.Scale(Y, k)
-
-	// r == x-coord of R
-	r_fp := R.X
-	if err != nil {
-		return nil, err
-	}
-
-	r := fpToFn(&r_fp)
-
-	// s' = (z + r'*x) * k^(-1)
-	kinv := new(secp256k1.ModNScalar)
-	kinv.InverseValNonConst(k)
-	s := r.Mul(x).Add(z).Mul(kinv)
-
-	proof, err := dleqProve(k, R_a, R, Y)
-	if err != nil {
-		return nil, err
-	}
-
-	return &EncryptedSignature{
-		R:     R,
-		R_a:   R_a,
-		s:     s,
-		proof: proof,
-	}, nil
-}
-
-// VerifyAdaptor verifies an encrypted signature is valid
-// i.e. if it is decrypted it will yield a signature on `msg` under receiver PublicKey.
-func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor *EncryptedSignature) (bool, error) {
-	// hash of message
-	z := &secp256k1.ModNScalar{}
-	if z.SetByteSlice(msg) {
-		return false, fmt.Errorf("invalid message length: not 32 byte hash")
-	}
-
-	r := adaptor.R.X
-
-	// check adaptor.proof.R == (z*G + r'*P) * s^(-1)
-	zG := new(Point)
-	zG.BaseExp(z)
-	rP := new(Point)
-	rP.Scale(k.key, fpToFn(&r))
-	sum := new(Point)
-	sum.Add(zG, rP)
-	s_inv := new(secp256k1.ModNScalar)
-	s_inv.InverseValNonConst(adaptor.s)
-	R := new(Point)
-	R.Scale(sum, s_inv)
-
-	if !R.Equal(adaptor.R_a) {
-		return false, nil
-	}
-
-	return dleqVerify(encryptionKey, adaptor.proof, adaptor.R_a, adaptor.R), nil
-}
-
 // EncryptedSignature is an "encrypted" ECDSA signature aka adaptor signature (R || R_a || s || dleqProof).
 type EncryptedSignature struct {
 	R, R_a *Point
@@ -210,6 +119,97 @@ func (s *EncryptedSignature) Decode(b []byte) error {
 	}
 
 	return nil
+}
+
+// AdaptorSign create an encrypted signature aka "adaptor signature" aka "pre-signature".
+//
+// The `msg` param is a 32 bytes hash. Use `nonceFnOpt` to specify custom NonceFunc. Default is WithRFC6979.
+func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
+	Y := encKey
+
+	// hash of message
+	z := new(secp256k1.ModNScalar)
+	if z.SetByteSlice(msg) {
+		return nil, fmt.Errorf("invalid message length: not 32 byte hash")
+	}
+
+	x := kp.Private().key
+
+	// choose nonce gen function
+	nonceFn := WithRFC6979(kp.Private(), msg, &PublicKey{key: encKey})
+	if len(nonceFnOpt) > 0 {
+		nonceFn = nonceFnOpt[0]
+	}
+
+	// generate nonce
+	k, err := nonceFn()
+	if err != nil {
+		return nil, err
+	}
+
+	// R_a = k*G
+	R_a := new(Point)
+	R_a.BaseExp(k)
+
+	// calculate R and R' inputs for dleqProve
+	// R' = k*Y
+	R := new(Point)
+	R.Scale(Y, k)
+
+	// r == x-coord of R
+	r_fp := R.X
+	if err != nil {
+		return nil, err
+	}
+
+	r := fpToFn(&r_fp)
+
+	// s' = (z + r'*x) * k^(-1)
+	kinv := new(secp256k1.ModNScalar)
+	kinv.InverseValNonConst(k)
+	s := r.Mul(x).Add(z).Mul(kinv)
+
+	proof, err := dleqProve(k, R_a, R, Y)
+	if err != nil {
+		return nil, err
+	}
+
+	return &EncryptedSignature{
+		R:     R,
+		R_a:   R_a,
+		s:     s,
+		proof: proof,
+	}, nil
+}
+
+// VerifyAdaptor verifies an encrypted signature is valid
+// i.e. if it is decrypted it will yield a signature on `msg` under receiver PublicKey.
+func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor *EncryptedSignature) (bool, error) {
+	// hash of message
+	z := &secp256k1.ModNScalar{}
+	if z.SetByteSlice(msg) {
+		return false, fmt.Errorf("invalid message length: not 32 byte hash")
+	}
+
+	r := adaptor.R.X
+
+	// check adaptor.proof.R == (z*G + r'*P) * s^(-1)
+	zG := new(Point)
+	zG.BaseExp(z)
+	rP := new(Point)
+	rP.Scale(k.key, fpToFn(&r))
+	sum := new(Point)
+	sum.Add(zG, rP)
+	s_inv := new(secp256k1.ModNScalar)
+	s_inv.InverseValNonConst(adaptor.s)
+	R := new(Point)
+	R.Scale(sum, s_inv)
+
+	if !R.Equal(adaptor.R_a) {
+		return false, nil
+	}
+
+	return dleqVerify(encryptionKey, adaptor.proof, adaptor.R_a, adaptor.R), nil
 }
 
 // RecoverFromAdaptorAndSignature recovers the decryption key given an encrypted signature and the signature that was decrypted from it.
