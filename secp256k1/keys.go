@@ -83,8 +83,8 @@ func (k *PublicKey) EncodeDecompressed() ([]byte, error) {
 		return nil, err
 	}
 
-	x.SetByteSlice(b[:32])
-	y.SetByteSlice(b[32:])
+	x.PutBytesUnchecked(b[:32])
+	y.PutBytesUnchecked(b[32:])
 	return b[:], nil
 }
 
@@ -121,6 +121,14 @@ func (s *Signature) Encode() ([]byte, error) {
 	var b [64]byte
 	s.r.PutBytesUnchecked(b[:32])
 	s.s.PutBytesUnchecked(b[32:])
+	return b[:], nil
+}
+
+func (s *Signature) EncodeRecoverable() ([]byte, error) {
+	var b [65]byte
+	s.r.PutBytesUnchecked(b[:32])
+	s.s.PutBytesUnchecked(b[32:])
+	b[64] = s.v
 	return b[:], nil
 }
 
@@ -227,10 +235,17 @@ func sign(z, x *secp256k1.ModNScalar) (*Signature, error) {
 	// s = (z + r*x) * k^(-1)
 	s := r.Mul(x).Add(z).Mul(kinv)
 
+	is_r_odd := byte(R.Y.IsOddBit())
+	is_s_high := byte(0)
+	if s.IsOverHalfOrder() {
+		is_s_high = 1
+		s.Negate()
+	}
+
 	return &Signature{
 		r: r_fp,
 		s: s,
-		v: 0, // TODO
+		v: is_r_odd ^ is_s_high,
 	}, nil
 }
 

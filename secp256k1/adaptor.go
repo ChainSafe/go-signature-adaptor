@@ -20,16 +20,23 @@ func (a *EncryptedSignature) Decrypt(sk *secp256k1.ModNScalar) (*Signature, erro
 	s := new(secp256k1.ModNScalar)
 	s.Mul2(a.s, y_inv)
 
+	is_s_high := byte(0)
+	if s.IsOverHalfOrder() {
+		is_s_high = 1
+	}
+
 	// negate s if high
 	if s.IsOverHalfOrder() {
 		s.Negate()
 	}
 
 	r := a.R.X
+	is_r_odd := byte(a.R.Y.IsOddBit())
 
 	return &Signature{
 		r: &r,
 		s: s,
+		v: is_r_odd ^ is_s_high,
 	}, nil
 }
 
