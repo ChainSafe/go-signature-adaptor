@@ -3,31 +3,29 @@ package secp256k1
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
-	"github.com/renproject/secp256k1"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 type EncryptedSignature struct {
-	R, R_a *secp256k1.Point
-	s      *secp256k1.Fn
+	R, R_a *Point
+	s      *secp256k1.ModNScalar
 	proof  *dleqProof
 }
 
-func (a *EncryptedSignature) Decrypt(sk *secp256k1.Fn) (*Signature, error) {
-	y_inv := &secp256k1.Fn{}
-	y_inv.Inverse(sk)
-	s := &secp256k1.Fn{}
-	s.Mul(a.s, y_inv)
+func (a *EncryptedSignature) Decrypt(sk *secp256k1.ModNScalar) (*Signature, error) {
+	y_inv := &secp256k1.ModNScalar{}
+	y_inv.InverseValNonConst(sk)
+	s := new(secp256k1.ModNScalar)
+	s.Mul2(a.s, y_inv)
 
 	// negate s if high
-	if s.IsHigh() {
-		s.Negate(s)
+	if s.IsOverHalfOrder() {
+		s.Negate()
 	}
 
-	r, _, err := a.R.XY()
-	if err != nil {
-		return nil, err
-	}
+	r := a.R.X
 
 	return &Signature{
 		r: &r,
@@ -41,9 +39,9 @@ func (s *EncryptedSignature) Encode() ([]byte, error) {
 	var b [encodedAdaptorSize]byte
 	s.R.PutBytes(b[:33])
 	s.R_a.PutBytes(b[33:66])
-	s.s.PutB32(b[66:98])
-	s.proof.z.PutB32(b[98 : 98+32])
-	s.proof.s.PutB32(b[98+32:])
+	s.s.SetByteSlice(b[66:98])
+	s.proof.z.PutBytesUnchecked(b[98 : 98+32])
+	s.proof.s.PutBytesUnchecked(b[98+32:])
 	return b[:], nil
 }
 
@@ -71,30 +69,26 @@ func (s *EncryptedSignature) Decode(b []byte) error {
 	}
 
 	// parse adaptor
-	R := &secp256k1.Point{}
-	err := R.SetBytes(b[:33])
-	if err != nil {
+	R := new(Point)
+	if err := R.SetBytes(b[:33]); err != nil {
 		return err
 	}
-
 	b = b[33:]
-	R_a := &secp256k1.Point{}
-	err = R_a.SetBytes(b[:33])
-	if err != nil {
+	R_a := new(Point)
+	if err := R_a.SetBytes(b[:33]); err != nil {
 		return err
 	}
-
 	b = b[33:]
-	s_a := &secp256k1.Fn{}
-	s_a.SetB32(b[:32])
+	s_a := new(secp256k1.ModNScalar)
+	s_a.SetByteSlice(b[:32])
 	b = b[32:]
 
 	// parse proof
-	z := &secp256k1.Fn{}
-	z.SetB32(b[:32])
+	z := new(secp256k1.ModNScalar)
+	z.SetByteSlice((b[:32]))
 	b = b[32:]
-	s_p := &secp256k1.Fn{}
-	s_p.SetB32(b[:32])
+	s_p := new(secp256k1.ModNScalar)
+	s_p.SetByteSlice(b[:32])
 
 	s.s = s_a
 	s.R_a = R_a
@@ -108,15 +102,14 @@ func (s *EncryptedSignature) Decode(b []byte) error {
 	return nil
 }
 
-func (kp *Keypair) AdaptorSign(msg []byte, encKey *secp256k1.Point, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
+func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
 	Y := encKey
-	if len(msg) != MessageLength {
-		return nil, errors.New("invalid message length: not 32 byte hash")
-	}
 
 	// hash of message
-	z := &secp256k1.Fn{}
-	_ = z.SetB32(msg) // TODO: check overflow
+	z := new(secp256k1.ModNScalar)
+	if z.SetByteSlice(msg) {
+		return nil, fmt.Errorf("invalid message length: not 32 byte hash")
+	}
 
 	x := kp.Private().key
 
@@ -133,16 +126,16 @@ func (kp *Keypair) AdaptorSign(msg []byte, encKey *secp256k1.Point, nonceFnOpt .
 	}
 
 	// R_a = k*G
-	R_a := &secp256k1.Point{}
+	R_a := new(Point)
 	R_a.BaseExp(k)
 
 	// calculate R and R' inputs for dleqProve
 	// R' = k*Y
-	R := &secp256k1.Point{}
+	R := new(Point)
 	R.Scale(Y, k)
 
 	// r == x-coord of R
-	r_fp, _, err := R.XY()
+	r_fp := R.X
 	if err != nil {
 		return nil, err
 	}
@@ -150,14 +143,9 @@ func (kp *Keypair) AdaptorSign(msg []byte, encKey *secp256k1.Point, nonceFnOpt .
 	r := fpToFn(&r_fp)
 
 	// s' = (z + r'*x) * k^(-1)
-	rx := &secp256k1.Fn{}
-	rx.Mul(r, x)
-	sum := &secp256k1.Fn{}
-	sum.Add(z, rx)
-	kinv := &secp256k1.Fn{}
-	kinv.Inverse(k)
-	s := &secp256k1.Fn{}
-	s.Mul(sum, kinv)
+	kinv := new(secp256k1.ModNScalar)
+	kinv.InverseValNonConst(k)
+	s := r.Mul(x).Add(z).Mul(kinv)
 
 	proof, err := dleqProve(k, R_a, R, Y)
 	if err != nil {
@@ -173,72 +161,62 @@ func (kp *Keypair) AdaptorSign(msg []byte, encKey *secp256k1.Point, nonceFnOpt .
 }
 
 func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor *EncryptedSignature) (bool, error) {
-	if len(msg) != MessageLength {
-		return false, errors.New("invalid message length: not 32 byte hash")
-	}
-
 	// hash of message
-	z := &secp256k1.Fn{}
-	overflow := z.SetB32(msg) // TODO: check overflow
-	if overflow {
-		return false, errors.New("message overflow")
+	z := &secp256k1.ModNScalar{}
+	if z.SetByteSlice(msg) {
+		return false, fmt.Errorf("invalid message length: not 32 byte hash")
 	}
 
-	r, _, err := adaptor.R.XY()
-	if err != nil {
-		return false, err
-	}
+	r := adaptor.R.X
 
 	// check adaptor.proof.R == (z*G + r'*P) * s^(-1)
-	zG := &secp256k1.Point{}
+	zG := new(Point)
 	zG.BaseExp(z)
-	rP := &secp256k1.Point{}
+	rP := new(Point)
 	rP.Scale(k.key, fpToFn(&r))
-	sum := &secp256k1.Point{}
+	sum := new(Point)
 	sum.Add(zG, rP)
-	sinv := &secp256k1.Fn{}
-	sinv.Inverse(adaptor.s)
-	R := &secp256k1.Point{}
-	R.Scale(sum, sinv)
+	s_inv := new(secp256k1.ModNScalar)
+	s_inv.InverseValNonConst(adaptor.s)
+	R := new(Point)
+	R.Scale(sum, s_inv)
 
-	if !R.Eq(adaptor.R_a) {
+	if !R.Equal(adaptor.R_a) {
 		return false, nil
 	}
 
 	return dleqVerify(encryptionKey, adaptor.proof, adaptor.R_a, adaptor.R), nil
 }
 
-func RecoverFromAdaptorAndSignature(adaptor *EncryptedSignature, encryptionKey *PublicKey, sig *Signature) (*secp256k1.Fn, error) {
+func RecoverFromAdaptorAndSignature(adaptor *EncryptedSignature, encryptionKey *PublicKey, sig *Signature) (*secp256k1.ModNScalar, error) {
 	// check sig.r == x-coordinate of R' = k*Y
 	r, _, err := adaptor.R.XY()
 	if err != nil {
 		return nil, err
 	}
 
-	if !r.Eq(sig.r) {
+	if !r.Equals(sig.r) {
 		return nil, errors.New("invalid signature for adaptor: r check failed")
 	}
 
 	// y' = s^-1 * s'
-	sinv := &secp256k1.Fn{}
-	sinv.Inverse(sig.s)
-	y := &secp256k1.Fn{}
-	y.Mul(sinv, adaptor.s)
+	s_inv := new(secp256k1.ModNScalar)
+	s_inv.InverseValNonConst(sig.s)
+	y := s_inv.Mul(adaptor.s)
 
-	Y := &secp256k1.Point{}
+	Y := new(Point)
 	Y.BaseExp(y)
 
 	// check Y' == Y, if so, return y'
-	if encryptionKey.key.Eq(Y) {
+	if encryptionKey.key.Equal(Y) {
 		return y, nil
 	}
 
 	// else if Y' == -Y, return -y'
-	negY := negatePoint(Y)
-	if encryptionKey.key.Eq(negY) {
-		yNeg := &secp256k1.Fn{}
-		yNeg.Negate(y)
-		return yNeg, nil
+	negY := Y.Copy()
+	negY.Negate()
+	if encryptionKey.key.Equal(negY) {
+		return y.Negate(), nil
 	}
 
 	return nil, errors.New("invalid signature for adaptor: y check failed")

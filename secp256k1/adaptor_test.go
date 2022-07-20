@@ -4,8 +4,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/renproject/secp256k1"
-
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,7 +39,7 @@ func TestRecoverFromAdaptorAndSignature(t *testing.T) {
 	// TODO: fix this, doesn't work with signatures we generated
 	secret, err := RecoverFromAdaptorAndSignature(adaptor, oneTime.public, sig)
 	require.NoError(t, err)
-	require.True(t, secret.Eq(oneTime.private.key))
+	require.True(t, secret.Equals(oneTime.private.key))
 }
 
 func TestAdaptor_ValidPlain(t *testing.T) {
@@ -60,8 +59,8 @@ func TestAdaptor_ValidPlain(t *testing.T) {
 
 	decryptionKeyStr, err := hex.DecodeString("0b2aba63b885a0f0e96fa0f303920c7fb7431ddfa94376ad94d969fbf4109dc8")
 	require.NoError(t, err)
-	y := &secp256k1.Fn{}
-	y.SetB32(decryptionKeyStr)
+	y := new(secp256k1.ModNScalar)
+	y.SetByteSlice(decryptionKeyStr)
 
 	// verify ecdsa signature
 	signatureStr, err := hex.DecodeString("424d14a5471c048ab87b3b83f6085d125d5864249ae4297a57c84e74710bb67329e80e0ee60e57af3e625bbae1672b1ecaa58effe613426b024fa1621d903394")
@@ -78,7 +77,7 @@ func TestAdaptor_ValidPlain(t *testing.T) {
 	err = adaptor.Decode(adaptorStr)
 	require.NoError(t, err)
 
-	Y := &secp256k1.Point{}
+	Y := new(Point)
 	err = Y.SetBytes(encryptionkeyStr)
 	require.NoError(t, err)
 	encryptionKey := &PublicKey{
@@ -88,7 +87,7 @@ func TestAdaptor_ValidPlain(t *testing.T) {
 	// recover decryption key
 	secret, err := RecoverFromAdaptorAndSignature(adaptor, encryptionKey, sig)
 	require.NoError(t, err)
-	require.True(t, secret.Eq(y))
+	require.True(t, secret.Equals(y))
 
 	// TODO: dleq check fails, probably due to hash issues
 	// ok, err = pubkey.VerifyAdaptor(messageHashStr, encryptionKey, adaptor)
