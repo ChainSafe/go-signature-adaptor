@@ -8,20 +8,31 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
+// EncryptedSignature is an "encrypted" ECDSA signature aka adaptor signature (R || R_a || s || dleqProof).
 type EncryptedSignature struct {
 	R, R_a *Point
 	s      *secp256k1.ModNScalar
 	proof  *dleqProof
 }
 
+// Decrypt function is used to decrypt an encrypted signature yielding the plain ECDSA signature.
+//
+// * Before calling this method you should be certain that the EncryptedSignature is what you think it is
+// by calling PublicKey.VerifyAdaptor on it first.
+//
+// * Once you give the decrypted Signature to anyone who has seen EncryptedSignature,
+// they will be able to learn decryption key aka secret by calling RecoverFromAdaptorAndSignature.
 func (a *EncryptedSignature) Decrypt(sk *secp256k1.ModNScalar) (*Signature, error) {
-	y_inv := &secp256k1.ModNScalar{}
-	y_inv.InverseValNonConst(sk)
+	yInv := &secp256k1.ModNScalar{}
+	yInv.InverseValNonConst(sk)
 	s := new(secp256k1.ModNScalar)
-	s.Mul2(a.s, y_inv)
+	s.Mul2(a.s, yInv)
+
+	sIsHigh := byte(0)
 
 	// negate s if high
 	if s.IsOverHalfOrder() {
+		sIsHigh = 1
 		s.Negate()
 	}
 
@@ -30,13 +41,15 @@ func (a *EncryptedSignature) Decrypt(sk *secp256k1.ModNScalar) (*Signature, erro
 	return &Signature{
 		r: &r,
 		s: s,
+		v: byte(a.R.Y.IsOddBit()) ^ sIsHigh,
 	}, nil
 }
 
-const encodedAdaptorSize = 33 + 33 + (32 * 3)
+const EncodedAdaptorSize = 33 + 33 + (32 * 3)
 
+// Encode encodes EncryptedSignature into EncodedAdaptorSize bytes buffer as follows (R || R_a || s || proof.z | proof.s).
 func (s *EncryptedSignature) Encode() ([]byte, error) {
-	var b [encodedAdaptorSize]byte
+	var b [EncodedAdaptorSize]byte
 	s.R.PutBytes(b[:33])
 	s.R_a.PutBytes(b[33:66])
 	s.s.SetByteSlice(b[66:98])
@@ -45,6 +58,7 @@ func (s *EncryptedSignature) Encode() ([]byte, error) {
 	return b[:], nil
 }
 
+// MarshalJSON serializes EncryptedSignature into JSON format based on the Encode method.
 func (s *EncryptedSignature) MarshalJSON() ([]byte, error) {
 	b, err := s.Encode()
 	if err != nil {
@@ -54,6 +68,7 @@ func (s *EncryptedSignature) MarshalJSON() ([]byte, error) {
 	return json.Marshal(b)
 }
 
+// UnmarshalJSON deserializes EncryptedSignature from JSON formatted bytes based on the Decode method.
 func (s *EncryptedSignature) UnmarshalJSON(in []byte) error {
 	var b []byte
 	if err := json.Unmarshal(in, &b); err != nil {
@@ -63,8 +78,9 @@ func (s *EncryptedSignature) UnmarshalJSON(in []byte) error {
 	return s.Decode(b)
 }
 
+// Decode parses bytes buffer `b` into EncryptedSignature.
 func (s *EncryptedSignature) Decode(b []byte) error {
-	if len(b) != encodedAdaptorSize {
+	if len(b) != EncodedAdaptorSize {
 		return errors.New("input slice has invalid length")
 	}
 
@@ -102,6 +118,9 @@ func (s *EncryptedSignature) Decode(b []byte) error {
 	return nil
 }
 
+// AdaptorSign create an encrypted signature aka "adaptor signature" aka "pre-signature".
+//
+// The `msg` param is a 32 bytes hash. Use `nonceFnOpt` to specify custom NonceFunc. Default is WithRFC6979.
 func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
 	Y := encKey
 
@@ -160,6 +179,8 @@ func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFun
 	}, nil
 }
 
+// VerifyAdaptor verifies an encrypted signature is valid
+// i.e. if it is decrypted it will yield a signature on `msg` under receiver PublicKey.
 func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor *EncryptedSignature) (bool, error) {
 	// hash of message
 	z := &secp256k1.ModNScalar{}
@@ -176,10 +197,10 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor 
 	rP.Scale(k.key, fpToFn(&r))
 	sum := new(Point)
 	sum.Add(zG, rP)
-	s_inv := new(secp256k1.ModNScalar)
-	s_inv.InverseValNonConst(adaptor.s)
+	sInv := new(secp256k1.ModNScalar)
+	sInv.InverseValNonConst(adaptor.s)
 	R := new(Point)
-	R.Scale(sum, s_inv)
+	R.Scale(sum, sInv)
 
 	if !R.Equal(adaptor.R_a) {
 		return false, nil
@@ -188,6 +209,7 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor 
 	return dleqVerify(encryptionKey, adaptor.proof, adaptor.R_a, adaptor.R), nil
 }
 
+// RecoverFromAdaptorAndSignature recovers the decryption key given an encrypted signature and the signature that was decrypted from it.
 func RecoverFromAdaptorAndSignature(adaptor *EncryptedSignature, encryptionKey *PublicKey, sig *Signature) (*secp256k1.ModNScalar, error) {
 	// check sig.r == x-coordinate of R' = k*Y
 	r, _, err := adaptor.R.XY()
@@ -200,9 +222,9 @@ func RecoverFromAdaptorAndSignature(adaptor *EncryptedSignature, encryptionKey *
 	}
 
 	// y' = s^-1 * s'
-	s_inv := new(secp256k1.ModNScalar)
-	s_inv.InverseValNonConst(sig.s)
-	y := s_inv.Mul(adaptor.s)
+	sInv := new(secp256k1.ModNScalar)
+	sInv.InverseValNonConst(sig.s)
+	y := sInv.Mul(adaptor.s)
 
 	Y := new(Point)
 	Y.BaseExp(y)

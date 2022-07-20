@@ -89,10 +89,9 @@ func TestAdaptor_ValidPlain(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, secret.Equals(y))
 
-	// TODO: dleq check fails, probably due to hash issues
-	// ok, err = pubkey.VerifyAdaptor(messageHashStr, encryptionKey, adaptor)
-	// require.NoError(t, err)
-	// require.True(t, ok)
+	ok, err = pubkey.VerifyAdaptor(messageHashStr, encryptionKey, adaptor)
+	require.NoError(t, err)
+	require.True(t, ok)
 }
 
 func TestAdaptor_Encode(t *testing.T) {
