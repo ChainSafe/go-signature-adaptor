@@ -267,17 +267,16 @@ func sign(z, x *secp256k1.ModNScalar) (*Signature, error) {
 	// s = (z + r*x) * k^(-1)
 	s := r.Mul(x).Add(z).Mul(kinv)
 
-	is_r_odd := byte(R.Y.IsOddBit())
-	is_s_high := byte(0)
+	sIsHigh := byte(0)
 	if s.IsOverHalfOrder() {
-		is_s_high = 1
+		sIsHigh = 1
 		s.Negate()
 	}
 
 	return &Signature{
 		r: r_fp,
 		s: s,
-		v: is_r_odd ^ is_s_high,
+		v: byte(R.Y.IsOddBit()) ^ sIsHigh,
 	}, nil
 }
 
@@ -286,7 +285,7 @@ func (kp *Keypair) Public() *PublicKey {
 	return kp.public
 }
 
-// Private PrivateKey component.
+// Private returns PrivateKey component.
 func (kp *Keypair) Private() *PrivateKey {
 	return kp.private
 }
@@ -307,15 +306,15 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	rP := new(Point)
 	rP.Scale(k.key, fpToFn(sig.r))
 
-	sinv := new(secp256k1.ModNScalar)
-	sinv.InverseValNonConst(sig.s)
+	sInv := new(secp256k1.ModNScalar)
+	sInv.InverseValNonConst(sig.s)
 
 	zG := new(Point)
 	zG.BaseExp(z)
 	sum := new(Point)
 	sum.Add(rP, zG)
 	R := new(Point)
-	R.Scale(sum, sinv)
+	R.Scale(sum, sInv)
 
 	rx, _, err := R.XY()
 	if err != nil {

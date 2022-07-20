@@ -23,28 +23,25 @@ type EncryptedSignature struct {
 // * Once you give the decrypted Signature to anyone who has seen EncryptedSignature,
 // they will be able to learn decryption key aka secret by calling RecoverFromAdaptorAndSignature.
 func (a *EncryptedSignature) Decrypt(sk *secp256k1.ModNScalar) (*Signature, error) {
-	y_inv := &secp256k1.ModNScalar{}
-	y_inv.InverseValNonConst(sk)
+	yInv := &secp256k1.ModNScalar{}
+	yInv.InverseValNonConst(sk)
 	s := new(secp256k1.ModNScalar)
-	s.Mul2(a.s, y_inv)
+	s.Mul2(a.s, yInv)
 
-	is_s_high := byte(0)
-	if s.IsOverHalfOrder() {
-		is_s_high = 1
-	}
+	sIsHigh := byte(0)
 
 	// negate s if high
 	if s.IsOverHalfOrder() {
+		sIsHigh = 1
 		s.Negate()
 	}
 
 	r := a.R.X
-	is_r_odd := byte(a.R.Y.IsOddBit())
 
 	return &Signature{
 		r: &r,
 		s: s,
-		v: is_r_odd ^ is_s_high,
+		v: byte(a.R.Y.IsOddBit()) ^ sIsHigh,
 	}, nil
 }
 
@@ -200,10 +197,10 @@ func (k *PublicKey) VerifyAdaptor(msg []byte, encryptionKey *PublicKey, adaptor 
 	rP.Scale(k.key, fpToFn(&r))
 	sum := new(Point)
 	sum.Add(zG, rP)
-	s_inv := new(secp256k1.ModNScalar)
-	s_inv.InverseValNonConst(adaptor.s)
+	sInv := new(secp256k1.ModNScalar)
+	sInv.InverseValNonConst(adaptor.s)
 	R := new(Point)
-	R.Scale(sum, s_inv)
+	R.Scale(sum, sInv)
 
 	if !R.Equal(adaptor.R_a) {
 		return false, nil
@@ -225,9 +222,9 @@ func RecoverFromAdaptorAndSignature(adaptor *EncryptedSignature, encryptionKey *
 	}
 
 	// y' = s^-1 * s'
-	s_inv := new(secp256k1.ModNScalar)
-	s_inv.InverseValNonConst(sig.s)
-	y := s_inv.Mul(adaptor.s)
+	sInv := new(secp256k1.ModNScalar)
+	sInv.InverseValNonConst(sig.s)
+	y := sInv.Mul(adaptor.s)
 
 	Y := new(Point)
 	Y.BaseExp(y)
