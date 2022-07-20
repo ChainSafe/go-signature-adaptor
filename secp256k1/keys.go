@@ -156,20 +156,21 @@ func (s *Signature) UnmarshalJSON(in []byte) error {
 }
 
 func GenerateKeypair() *Keypair {
-	for {
-		if priv, err := secp256k1.GeneratePrivateKey(); err == nil {
-			pub := new(Point)
-			pub.BaseExp(&priv.Key)
+	priv, err := secp256k1.GeneratePrivateKey()
+	if err != nil {
+		panic(fmt.Errorf("expected key to generate, but got error: %e", err))
+	}
 
-			return &Keypair{
-				public: &PublicKey{
-					key: pub,
-				},
-				private: &PrivateKey{
-					key: &priv.Key,
-				},
-			}
-		}
+	pub := new(Point)
+	pub.BaseExp(&priv.Key)
+
+	return &Keypair{
+		public: &PublicKey{
+			key: pub,
+		},
+		private: &PrivateKey{
+			key: &priv.Key,
+		},
 	}
 }
 
