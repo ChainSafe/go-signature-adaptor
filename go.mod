@@ -1,4 +1,4 @@
-module github.com/noot/go-signature-adaptor
+module github.com/ChainSafe/go-signature-adaptor
 
 go 1.17
 

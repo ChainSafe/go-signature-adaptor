@@ -121,8 +121,8 @@ func (s *EncryptedSignature) Decode(b []byte) error {
 // AdaptorSign create an encrypted signature aka "adaptor signature" aka "pre-signature".
 //
 // The `msg` param is a 32 bytes hash. Use `nonceFnOpt` to specify custom NonceFunc. Default is WithRFC6979.
-func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
-	Y := encKey
+func (kp *Keypair) AdaptorSign(msg []byte, encKey *PublicKey, nonceFnOpt ...NonceFunc) (*EncryptedSignature, error) {
+	Y := encKey.key
 
 	// hash of message
 	z := new(secp256k1.ModNScalar)
@@ -133,7 +133,7 @@ func (kp *Keypair) AdaptorSign(msg []byte, encKey *Point, nonceFnOpt ...NonceFun
 	x := kp.Private().key
 
 	// choose nonce gen function
-	nonceFn := WithRFC6979(kp.Private(), msg, &PublicKey{key: encKey})
+	nonceFn := WithRFC6979(kp.Private(), msg, encKey)
 	if len(nonceFnOpt) > 0 {
 		nonceFn = nonceFnOpt[0]
 	}

@@ -30,6 +30,11 @@ func (k *PrivateKey) Public() *PublicKey {
 	}
 }
 
+// Inner returns secp256k1.ModNScalar behind PrivateKey.
+func (k *PrivateKey) Inner() *secp256k1.ModNScalar {
+	return k.key
+}
+
 // Encode encodes PrivateKey into a 32 bytes buffer.
 func (k *PrivateKey) Encode() ([]byte, error) {
 	var b [32]byte
@@ -322,20 +327,4 @@ func (k *PublicKey) Verify(msg []byte, sig *Signature) (bool, error) {
 	}
 
 	return rx.Equals(sig.r), nil
-}
-
-// MulPrivateKeys performs scalar multiplication of the underlying secret scalars and return combined PrivateKey.
-func MulPrivateKeys(a, b *PrivateKey) *PrivateKey {
-	return &PrivateKey{
-		key: a.key.Mul(b.key),
-	}
-}
-
-// MulPublicKeyAndSecret performs scaling of the given PublicKey by PrivateKey scalar.
-func MulPublicKeyAndSecret(pub *PublicKey, secret *PrivateKey) *PublicKey {
-	res := new(Point)
-	res.Scale(pub.key, secret.key)
-	return &PublicKey{
-		key: res,
-	}
 }
