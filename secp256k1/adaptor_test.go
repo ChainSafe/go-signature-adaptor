@@ -36,7 +36,6 @@ func TestRecoverFromAdaptorAndSignature(t *testing.T) {
 	sig, err := adaptor.Decrypt(oneTime.private.key)
 	require.NoError(t, err)
 
-	// TODO: fix this, doesn't work with signatures we generated
 	secret, err := RecoverFromAdaptorAndSignature(adaptor, oneTime.public, sig)
 	require.NoError(t, err)
 	require.True(t, secret.Equals(oneTime.private.key))

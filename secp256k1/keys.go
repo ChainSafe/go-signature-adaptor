@@ -30,6 +30,11 @@ func (k *PrivateKey) Public() *PublicKey {
 	}
 }
 
+// Inner returns secp256k1.ModNScalar behind PrivateKey.
+func (k *PrivateKey) Inner() *secp256k1.ModNScalar {
+	return k.key
+}
+
 // Encode encodes PrivateKey into a 32 bytes buffer.
 func (k *PrivateKey) Encode() ([]byte, error) {
 	var b [32]byte
