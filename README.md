@@ -12,7 +12,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/noot/go-signature-adaptor/secp256k1"
+	"github.com/ChainSafe/go-signature-adaptor/secp256k1"
 )
 
 func main() {
