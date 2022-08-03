@@ -13,7 +13,7 @@ func TestAdaptor_SignAndVerify(t *testing.T) {
 	oneTime := GenerateKeypair()
 
 	msg := [32]byte{1, 2, 3}
-	adaptor, err := alice.AdaptorSign(msg[:], oneTime.public.key)
+	adaptor, err := alice.AdaptorSign(msg[:], oneTime.public)
 	require.NoError(t, err)
 
 	ok, err := alice.Public().VerifyAdaptor(msg[:], oneTime.public, adaptor)
@@ -26,7 +26,7 @@ func TestRecoverFromAdaptorAndSignature(t *testing.T) {
 	oneTime := GenerateKeypair()
 
 	msg := [32]byte{1, 2, 3}
-	adaptor, err := alice.AdaptorSign(msg[:], oneTime.public.key)
+	adaptor, err := alice.AdaptorSign(msg[:], oneTime.public)
 	require.NoError(t, err)
 
 	ok, err := alice.Public().VerifyAdaptor(msg[:], oneTime.public, adaptor)
