@@ -59,12 +59,6 @@ func TestSignature_ShouldBeVerifiedByEthereum(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 33, len(pubKey))
 
-	// ethPub, err := crypto.DecompressPubkey(pubKey)
-	// require.NoError(t, err)
-	// publicKeyBytes := crypto.FromECDSAPub(ethPub)
-	// t.Log(pubKey)
-	// t.Log(publicKeyBytes)
-
 	msg = [32]byte{1, 2, 3}
 	verified := secp256k1.VerifySignature(pubKey, msg[:], encSig[:])
 	assert.True(t, verified)
